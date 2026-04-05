@@ -125,18 +125,18 @@ if not display_df.empty:
 # --- 5. DİNAMİK SEKMELER (YETKİYE GÖRE) ---
 tab_isimleri = []
 
-# Admin ve User "Yeni Görev" ekleyebilir, Guest ekleyemez.
 if st.session_state.aktif_rol in ["Admin", "User"]:
     tab_isimleri.append("➕ Yeni Görev")
     
 tab_isimleri.append("📋 İş Listesi ve Detaylar")
 tab_isimleri.append("📊 Raporlama")
 
-# Admin ve User "Veri Yönetimi" görebilir
 if st.session_state.aktif_rol in ["Admin", "User"]:
     tab_isimleri.append("⚙️ Veri Yönetimi")
 
-# Sadece Admin "Kullanıcı Yönetimi" görebilir
+# Herkes profil ayarlarını görebilir
+tab_isimleri.append("👤 Profil Ayarları")
+
 if st.session_state.aktif_rol == "Admin":
     tab_isimleri.append("👥 Kullanıcı Yönetimi")
 
@@ -201,14 +201,11 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                 as_df = pd.DataFrame(asamalari_coz(secili['AŞAMALAR']))
                 bos_asama_df = pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Durum", "Not"])
                 
-                # EĞER KULLANICI GUEST İSE SADECE OKUMA YETKİSİ VER
                 if st.session_state.aktif_rol == "Guest":
                     st.info(f"**📌 Mevcut Durum:** {secili['DURUM']} &nbsp;&nbsp;|&nbsp;&nbsp; **💬 Notlar:** {secili['NOTLAR']}")
                     st.markdown("#### 🛠 Alt Aşamalar")
                     st.dataframe(as_df if not as_df.empty else bos_asama_df, use_container_width=True, hide_index=True)
                     st.warning("🔒 Guest (Misafir) yetkisine sahip olduğunuz için değişiklik yapamazsınız.")
-                
-                # ADMİN VEYA USER İSE DÜZENLEME YETKİSİ VER
                 else:
                     c1, c2 = st.columns(2)
                     durum_listesi = ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"]
@@ -238,12 +235,42 @@ if "⚙️ Veri Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["⚙️ Veri Yönetimi"]:
         st.download_button("📥 Verileri İndir", display_df.to_csv(index=False).encode('utf-8'), "yedek.csv", "text/csv")
 
-# ================= TAB 5: KULLANICI (ADMİN) =================
+# ================= TAB 5: PROFİL AYARLARI (YENİ) =================
+if "👤 Profil Ayarları" in sekme_sozlugu:
+    with sekme_sozlugu["👤 Profil Ayarları"]:
+        st.subheader("👤 Profil Bilgileri ve Şifre Değiştirme")
+        st.info(f"Sisteme **{st.session_state.aktif_kullanici}** kullanıcısı olarak, **{st.session_state.aktif_rol}** yetkisiyle giriş yaptınız.")
+        
+        with st.container(border=True):
+            st.markdown("#### 🔑 Şifremi Güncelle")
+            eski_sifre = st.text_input("Mevcut Şifreniz", type="password")
+            yeni_sifre = st.text_input("Yeni Şifreniz", type="password")
+            yeni_sifre_tekrar = st.text_input("Yeni Şifreniz (Tekrar)", type="password")
+            
+            if st.button("💾 Şifreyi Kaydet"):
+                # Kullanıcının veritabanındaki satırını bul
+                kullanici_satiri = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == st.session_state.aktif_kullanici].iloc[0]
+                gercek_sifre = str(kullanici_satiri['SIFRE'])
+                
+                # Doğrulamalar
+                if eski_sifre != gercek_sifre:
+                    st.error("❌ Mevcut şifrenizi yanlış girdiniz.")
+                elif yeni_sifre != yeni_sifre_tekrar:
+                    st.error("❌ Yeni girdiğiniz şifreler birbiriyle uyuşmuyor.")
+                elif len(yeni_sifre) < 4:
+                    st.warning("⚠️ Lütfen en az 4 haneli bir şifre belirleyin.")
+                else:
+                    # Şifreyi Dataframe'de güncelle
+                    st.session_state.kullanicilar.loc[st.session_state.kullanicilar['KULLANICI_ADI'] == st.session_state.aktif_kullanici, 'SIFRE'] = yeni_sifre
+                    # Google Sheets'e kaydet
+                    kullanici_kaydet(st.session_state.kullanicilar)
+                    st.success("✅ Şifreniz başarıyla güncellendi! Artık yeni şifrenizle giriş yapabilirsiniz.")
+
+# ================= TAB 6: KULLANICI (ADMİN) =================
 if "👥 Kullanıcı Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["👥 Kullanıcı Yönetimi"]:
         st.subheader("👥 Kullanıcı Yönetimi")
         
-        # Rol Sütununu Seçmeli (Dropdown) Yapma
         ed_users = st.data_editor(
             st.session_state.kullanicilar, 
             num_rows="dynamic", 
