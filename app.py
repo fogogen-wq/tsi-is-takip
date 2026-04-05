@@ -125,30 +125,35 @@ sorumlular = [k for k in kullanicilar if k != "Yönetici"]
 st.sidebar.divider()
 st.sidebar.caption(f"🔑 Yetki Seviyesi: **{st.session_state.aktif_rol}**")
 
-if not st.session_state.data.empty:
-    st.sidebar.markdown("### 📊 Hızlı Özet")
-    toplam_is = len(st.session_state.data)
-    tamamlanan = len(st.session_state.data[st.session_state.data['DURUM'] == 'Tamamlandı'])
-    bekleyen = len(st.session_state.data[st.session_state.data['DURUM'].isin(['Bekliyor', 'Devam Ediyor'])])
-    
-    c1, c2 = st.sidebar.columns(2)
-    c1.metric("Toplam İş", toplam_is)
-    c2.metric("Biten", tamamlanan)
-    st.sidebar.metric("⏳ Bekleyen/Devam", bekleyen)
+display_df = st.session_state.data.copy()
 
-st.sidebar.divider()
-st.sidebar.markdown("### 🔍 Gelişmiş Filtreler")
+# Sol menü filtrelerini tanımla
+st.sidebar.markdown("### 🔍 Filtreler")
 f_firma = st.sidebar.multiselect("🏢 Firma", firmalar)
 f_sorumlu = st.sidebar.multiselect("👤 Sorumlu", sorumlular)
 f_durum = st.sidebar.multiselect("📌 Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"])
 f_oncelik = st.sidebar.multiselect("⚡ Öncelik", ["Düşük", "Orta", "Yüksek"])
 
-display_df = st.session_state.data.copy()
+# Filtreleri tabloya uygula
 if f_firma: display_df = display_df[display_df['FİRMA'].isin(f_firma)]
 if f_sorumlu: display_df = display_df[display_df['ANA SORUMLU'].isin(f_sorumlu)]
 if f_durum: display_df = display_df[display_df['DURUM'].isin(f_durum)]
 if f_oncelik: display_df = display_df[display_df['ÖNCELİK'].isin(f_oncelik)]
 
+# --- SOL MENÜ İSTATİSTİKLERİ (Filtrelenmiş Veriye Göre Çalışır) ---
+if not display_df.empty:
+    st.sidebar.divider()
+    st.sidebar.markdown("### 📊 Filtre Özeti")
+    toplam_is = len(display_df)
+    tamamlanan = len(display_df[display_df['DURUM'] == 'Tamamlandı'])
+    bekleyen = len(display_df[display_df['DURUM'].isin(['Bekliyor', 'Devam Ediyor'])])
+    
+    c1, c2 = st.sidebar.columns(2)
+    c1.metric("Listelenen", toplam_is)
+    c2.metric("Biten", tamamlanan)
+    st.sidebar.metric("⏳ Bekleyen/Devam", bekleyen)
+
+# --- 5. SEKMELER ---
 if st.session_state.aktif_rol == "Admin":
     tab_ekle, tab_liste, tab_rapor, tab_ayarlar, tab_kullanici = st.tabs(["➕ Yeni Görev", "📋 İş Listesi ve Detaylar", "📊 Raporlama", "⚙️ Veri Yönetimi", "👥 Kullanıcı Yönetimi"])
 else:
@@ -274,13 +279,14 @@ with tab_liste:
 with tab_rapor:
     st.subheader("📊 Gelişmiş İş ve Performans Raporları")
     
-    if not st.session_state.data.empty:
-        df_rapor = st.session_state.data.copy()
+    # ÇÖZÜM: st.session_state.data yerine süzülmüş olan display_df kullanılıyor!
+    if not display_df.empty:
+        df_rapor = display_df.copy()
         
         # 1. SATIR: KPI KARTLARI
-        st.markdown("#### 🎯 Genel Özet")
+        st.markdown("#### 🎯 Seçili Filtrelere Göre Özet")
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Toplam Görev", len(df_rapor))
+        m1.metric("Gösterilen Görev", len(df_rapor))
         m2.metric("Tamamlanan ✅", len(df_rapor[df_rapor['DURUM'] == 'Tamamlandı']))
         m3.metric("Devam Eden ⏳", len(df_rapor[df_rapor['DURUM'] == 'Devam Ediyor']))
         m4.metric("Geciken/İptal ⚠️", len(df_rapor[df_rapor['DURUM'].isin(['Gecikti', 'İptal'])]))
@@ -290,38 +296,32 @@ with tab_rapor:
         # 2. SATIR: GRAFİKLER
         c1, c2 = st.columns(2)
         with c1:
-            # Firma Analizi (Yatay Bar)
             fig_firma = px.histogram(df_rapor, y="FİRMA", color="DURUM", barmode="group", 
                                      title="🏢 Firmalara Göre İş Yükü Dağılımı", orientation='h')
             st.plotly_chart(fig_firma, use_container_width=True)
             
-            # Öncelik Dağılımı (Pie)
             renk_haritasi = {"Yüksek": "#EF553B", "Orta": "#FECB52", "Düşük": "#00CC96"}
             fig_oncelik = px.pie(df_rapor, names="ÖNCELİK", title="⚡ Aciliyet / Öncelik Dağılımı", 
                                  hole=0.3, color="ÖNCELİK", color_discrete_map=renk_haritasi)
             st.plotly_chart(fig_oncelik, use_container_width=True)
 
         with c2:
-            # Sorumlu Analizi (Donut)
             fig_sorumlu = px.pie(df_rapor, names="ANA SORUMLU", hole=0.4, title="👤 Personel Sorumluluk Dağılımı")
             fig_sorumlu.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig_sorumlu, use_container_width=True)
             
-            # Durum Dağılımı (Pie)
             fig_durum = px.pie(df_rapor, names="DURUM", title="📌 Genel İş Durumu")
             st.plotly_chart(fig_durum, use_container_width=True)
             
         st.divider()
         
         # 3. SATIR: YAKLAŞAN / ACİL İŞLER TABLOSU
-        st.markdown("#### ⏳ Yaklaşan ve Acil Görevler (Sadece Devam Eden/Bekleyenler)")
+        st.markdown("#### ⏳ Yaklaşan ve Acil Görevler (Filtrelenmiş İşler İçinden)")
         try:
             df_rapor['BİTİŞ'] = pd.to_datetime(df_rapor['BİTİŞ'])
-            # Sadece bitmemiş işleri filtrele ve bitiş tarihine göre sırala
             df_yaklasan = df_rapor[df_rapor['DURUM'].isin(['Bekliyor', 'Devam Ediyor'])].sort_values(by='BİTİŞ')
             
             if not df_yaklasan.empty:
-                # Ekranda daha güzel görünmesi için tarihleri string'e geri çevir
                 df_yaklasan['BİTİŞ'] = df_yaklasan['BİTİŞ'].dt.strftime('%Y-%m-%d')
                 st.dataframe(
                     df_yaklasan[['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BİTİŞ', 'ÖNCELİK']], 
@@ -329,17 +329,17 @@ with tab_rapor:
                     hide_index=True
                 )
             else:
-                st.success("Şu an beklemede veya devam eden hiçbir görev bulunmuyor. Harika!")
+                st.success("Seçili filtrelere göre beklemede olan görev bulunmuyor!")
         except Exception as e:
-            st.info("Görevler tarih sırasına dizilirken bir hata oluştu. (Tarih formatlarını kontrol edin).")
+            st.info("Görevler tarih sırasına dizilirken bir hata oluştu.")
             
     else:
-        st.warning("Henüz raporlanacak bir görev verisi bulunmuyor.")
+        st.warning("Seçtiğiniz filtrelere uyan herhangi bir görev bulunmuyor.")
 
 # ================= TAB 4: VERİ YÖNETİMİ =================
 with tab_ayarlar:
     csv = st.session_state.data.to_csv(index=False).encode('utf-8')
-    st.download_button(label="📥 Görev Verilerini Excel/CSV Olarak İndir", data=csv, file_name='tsi_is_takip_yedek.csv', mime='text/csv')
+    st.download_button(label="📥 Tüm Görev Verilerini İndir (Yedek)", data=csv, file_name='tsi_is_takip_yedek.csv', mime='text/csv')
 
 # ================= TAB 5: KULLANICI YÖNETİMİ (SADECE ADMİN) =================
 if st.session_state.aktif_rol == "Admin":
