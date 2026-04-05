@@ -210,7 +210,7 @@ with tab_liste:
             gosterilecek_df,
             use_container_width=True,
             height=350,
-            selection_mode="single_row",
+            selection_mode="single_row", # <-- HATA BURADA
             on_select="rerun",
             key="ana_tablo_secim"
         )
