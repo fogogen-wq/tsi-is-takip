@@ -280,12 +280,9 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
         
         kullanici_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] == st.session_state.aktif_kullanici].copy()
         
-        # --- TİP KORUMASI (HATA ÇÖZÜMÜ BURADA) ---
-        # Streamlit DateColumn ve CheckboxColumn için verileri hatasız formata (Datetime ve Boolean) çeviriyoruz.
         kullanici_todos['BİTİŞ_TARİHİ'] = pd.to_datetime(kullanici_todos['BİTİŞ_TARİHİ'], errors='coerce')
         kullanici_todos['TAMAMLANDI'] = kullanici_todos['TAMAMLANDI'].astype(str).str.upper().isin(['TRUE', '1', 'TRUE.0'])
         
-        # 1. Görsel İlerleme (Gamification - Progress Bar)
         toplam_is = len(kullanici_todos)
         biten_is = len(kullanici_todos[kullanici_todos['TAMAMLANDI'] == True])
         
@@ -295,10 +292,8 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
         else:
             st.info("Harika! Şimdilik yapılacak işin görünmüyor. Yeni bir görev ekleyebilirsin.")
         
-        # Biten işleri otomatik en alta atma
         kullanici_todos = kullanici_todos.sort_values(by=['TAMAMLANDI'])
         
-        # 2. Modern Tablo Ayarları
         ed_todos = st.data_editor(
             kullanici_todos,
             num_rows="dynamic",
@@ -316,14 +311,10 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
         
         if st.button("💾 Değişiklikleri Kaydet", use_container_width=True):
             ed_todos['KULLANICI'] = st.session_state.aktif_kullanici
-            
-            # Kaydederken verileri tekrar "String" (Metin) yapıyoruz ki Google Sheets sapıtmasın
             ed_todos['BİTİŞ_TARİHİ'] = pd.to_datetime(ed_todos['BİTİŞ_TARİHİ'], errors='coerce').dt.strftime('%Y-%m-%d').fillna("")
             ed_todos['TAMAMLANDI'] = ed_todos['TAMAMLANDI'].astype(str)
-            
             diger_kullanicilar_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] != st.session_state.aktif_kullanici]
             st.session_state.todo_db = pd.concat([diger_kullanicilar_todos, ed_todos], ignore_index=True)
-            
             tablo_kaydet(st.session_state.todo_db, "Yapilacaklar")
             st.success("Kişisel listeniz başarıyla güncellendi!")
             st.rerun()
@@ -347,10 +338,47 @@ with sekme_sozlugu["👤 Profil Ayarları"]:
                 tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar"); st.success("✅ Güncellendi!"); st.rerun()
             else: st.error("❌ Hata!")
 
-# ================= TAB: KULLANICI YÖNETİMİ =================
+# ================= TAB: KULLANICI YÖNETİMİ (GÜNCELLENDİ) =================
 if "👥 Kullanıcı Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["👥 Kullanıcı Yönetimi"]:
-        ed_u = st.data_editor(st.session_state.kullanicilar, num_rows="dynamic", use_container_width=True, column_config={"ROL": st.column_config.SelectboxColumn("ROL", options=["Admin", "User", "Guest"])})
+        st.subheader("👥 Kullanıcı ve Erişim Yönetimi")
+        st.info("🔒 Güvenlik gereği şifreler tabloda gizlenmiştir. Listeye yeni eklediğiniz kullanıcıların şifresi otomatik olarak **'1234'** belirlenir. Aşağıdaki alandan şifreleri güvenle değiştirebilirsiniz.")
+        
+        # SIFRE sütunu tablodan tamamen gizlendi
+        ed_u = st.data_editor(
+            st.session_state.kullanicilar, 
+            num_rows="dynamic", 
+            use_container_width=True, 
+            column_config={
+                "KULLANICI_ADI": st.column_config.TextColumn("Kullanıcı Adı", required=True),
+                "SIFRE": None, # ŞİFREYİ GÖZDEN SAKLA
+                "ROL": st.column_config.SelectboxColumn("Yetki Rolü", options=["Admin", "User", "Guest"]),
+                "EMAIL": st.column_config.TextColumn("E-Posta Adresi")
+            }
+        )
+        
         if st.button("💾 Kullanıcıları Kaydet"):
+            # Eğer admin yeni bir kullanıcı eklediyse, şifresi boştur. Ona otomatik 1234 ata.
+            ed_u['SIFRE'] = ed_u['SIFRE'].fillna("1234").replace("", "1234")
             st.session_state.kullanicilar = ed_u
-            tablo_kaydet(ed_u, "Kullanıcılar"); st.success("Kaydedildi!"); st.rerun()
+            tablo_kaydet(ed_u, "Kullanıcılar")
+            st.success("Kullanıcılar başarıyla kaydedildi!")
+            st.rerun()
+            
+        st.divider()
+        
+        # GÜVENLİ ŞİFRE SIFIRLAMA ALANI
+        st.markdown("#### 🔑 Güvenli Şifre Sıfırlama")
+        c1, c2 = st.columns(2)
+        kullanici_isimleri = ed_u['KULLANICI_ADI'].dropna().unique().tolist()
+        secilen_k = c1.selectbox("Şifresi Değişecek Kullanıcı", ["Seçiniz..."] + kullanici_isimleri)
+        yeni_s = c2.text_input("Yeni Şifre Belirle", type="password")
+        
+        if st.button("🔄 Seçili Kullanıcının Şifresini Sıfırla"):
+            if secilen_k != "Seçiniz..." and len(yeni_s) >= 4:
+                idx = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == secilen_k].index[0]
+                st.session_state.kullanicilar.at[idx, 'SIFRE'] = yeni_s
+                tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar")
+                st.success(f"✅ '{secilen_k}' adlı kullanıcının şifresi başarıyla güncellendi!")
+            else:
+                st.error("Lütfen bir kullanıcı seçin ve en az 4 haneli bir şifre girin.")
