@@ -26,14 +26,11 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def veriyi_yukle():
     try:
-        # Önbelleği kapatıyoruz (ttl=0) ki her zaman güncel veri gelsin
         df = conn.read(ttl=0)
-        # Tarih sütununu düzelt
         if 'BAŞLANGIÇ' in df.columns:
             df['BAŞLANGIÇ'] = pd.to_datetime(df['BAŞLANGIÇ']).dt.strftime('%Y-%m-%d')
         return df
     except Exception as e:
-        st.error(f"Veri yüklenirken hata oluştu: {e}")
         columns = ['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BAŞLANGIÇ', 'BİTİŞ', 'DURUM', 'ÖNCELİK', 'NOTLAR', 'AŞAMALAR', 'KAYIT_TARIHI']
         return pd.DataFrame(columns=columns)
 
@@ -102,9 +99,12 @@ with tab_liste:
                 st.markdown(f"### 🎯 Detay: {secili_satir['GÖREV ADI']}")
                 
                 col1, col2 = st.columns(2)
-                yeni_durum = col1.selectbox("Genel Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"], 
-                                          index=["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"].index(secili_satir['DURUM']) if secili_satir['DURUM'] in ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"] else 0)
-                yeni_not = col2.text_input("Genel Not", value=str(secili_satir['NOTLAR']) if pd.notna(secili_satir['NOTLAR']) else "")
+                durum_listesi = ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"]
+                mevcut_durum = secili_satir['DURUM']
+                durum_index = durum_listesi.index(mevcut_durum) if mevcut_durum in durum_listesi else 0
+                
+                yeni_durum = col1.selectbox("Genel Durum", durum_listesi, index=durum_index, key=f"sel_dur_{idx}")
+                yeni_not = col2.text_input("Genel Not", value=str(secili_satir['NOTLAR']) if pd.notna(secili_satir['NOTLAR']) else "", key=f"sel_not_{idx}")
 
                 st.write("#### 🛠 Alt Aşamalar")
                 mevcut_asamalar = asamalari_coz(secili_satir['AŞAMALAR'])
@@ -116,40 +116,4 @@ with tab_liste:
                     use_container_width=True,
                     column_config={
                         "Sorumlu": st.column_config.SelectboxColumn(options=sorumlular),
-                        "Durum": st.column_config.SelectboxColumn(options=["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal"])
-                    },
-                    key=f"editor_{idx}"
-                )
-
-                if st.button("💾 Google Sheets'e Kaydet", use_container_width=True):
-                    st.session_state.data.at[idx, 'DURUM'] = yeni_durum
-                    st.session_state.data.at[idx, 'NOTLAR'] = yeni_not
-                    st.session_state.data.at[idx, 'AŞAMALAR'] = asamalari_paketle(duzenlenen_asamalar.to_dict('records'))
-                    
-                    veriyi_kaydet(st.session_state.data)
-                    st.success("Kaydedildi! Sayfa yenileniyor...")
-                    st.rerun()
-        else:
-            st.info("💡 Detayları görmek için listeden bir işe tıklayın.")
-    else:
-        st.warning("Henüz hiç görev yok veya filtreleriniz hiçbir sonuç vermedi.")
-
-# ================= TAB 2: YENİ GÖREV EKLEME =================
-with tab_ekle:
-    with st.form("yeni_is_formu", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        v_ad = c1.text_input("Görev Adı *")
-        v_firma = c1.text_input("Firma *")
-        
-        v_sorumlu = c2.selectbox("Ana Sorumlu *", sorumlular)
-        v_bitis = c2.date_input("Hedef Bitiş", datetime.now() + timedelta(days=7))
-        
-        v_oncelik = st.selectbox("Öncelik", ["Düşük", "Orta", "Yüksek"])
-        v_not = st.text_area("Notlar")
-        
-        submit = st.form_submit_button("✅ GÖREVİ OLUŞTUR")
-        
-        if submit and v_ad and v_firma:
-            yeni = {
-                'GÖREV ADI': v_ad, 'FİRMA': v_firma, 'ANA SORUMLU': v_sorumlu,
-                'BAŞLANGIÇ': datetime.now().strftime('%Y-%m-%d'), 'BİTİŞ': v_
+                        "Durum": st.column_config.SelectboxColumn(options=["Bekliyor", "Devam Ediyor", "Tamam
