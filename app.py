@@ -32,13 +32,21 @@ if 'form_id' not in st.session_state:
 def tablo_yukle(sheet_name, fallback_cols):
     try:
         df = conn.read(worksheet=sheet_name, ttl=0)
-        if df.empty:
+        
+        # Eğer tablo tamamen boşsa direkt şablonu döndür
+        if df is None or df.empty:
             return pd.DataFrame(columns=fallback_cols)
             
-        # KORUMA: Google Sheets'te kolon adı yanlış yazılmışsa veya eksikse, çökmesini engellemek için otomatik ekle
+        # Google Sheets'te kolon eksikse çökmesini engellemek için otomatik ekle
         for col in fallback_cols:
             if col not in df.columns:
                 df[col] = ""
+                
+        # KORUMA: Boş sütunların sayısal (float) algılanıp çökertmesini engeller
+        df = df.fillna("")
+        for col in df.columns:
+            df[col] = df[col].astype(str).replace({"nan": "", "NaN": "", "None": ""})
+            
         return df
     except:
         return pd.DataFrame(columns=fallback_cols)
