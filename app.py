@@ -28,7 +28,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 if 'form_id' not in st.session_state:
     st.session_state.form_id = 0  
 
-# --- VERİ YÖNETİMİ FONKSİYONLARI ---
 def kullanici_yukle():
     try:
         df = conn.read(worksheet="Kullanıcılar", ttl=0)
@@ -76,6 +75,7 @@ def asamalari_paketle(asama_listesi):
 if "giris_basarili" not in st.session_state:
     st.session_state.giris_basarili, st.session_state.aktif_kullanici, st.session_state.aktif_rol = False, None, None
 
+# Kullanıcı listesini alfabetik sırala
 kullanici_listesi = sorted(st.session_state.kullanicilar['KULLANICI_ADI'].unique().tolist())
 
 if not st.session_state.giris_basarili:
@@ -92,13 +92,14 @@ if not st.session_state.giris_basarili:
             else: st.sidebar.error("Hatalı şifre!")
     st.stop()
 
-# --- 4. SIDEBAR (SOL MENÜ) ---
+# --- 4. SIDEBAR VE FİLTRELER ---
 st.sidebar.success(f"Hoş geldin, {st.session_state.aktif_kullanici}!")
 if st.sidebar.button("🚪 Çıkış Yap"):
     st.session_state.giris_basarili = False
     st.rerun()
 
-mevcut_firmalar = sorted(st.session_state.data['FİRMA'].dropna().unique().tolist()) if not st.session_state.data.empty else ["Akgıda", "Tegep"]
+# Listeleri her zaman alfabetik hazırla
+mevcut_firmalar = sorted(st.session_state.data['FİRMA'].dropna().unique().tolist()) if not st.session_state.data.empty else []
 gorev_sorumlulari = st.session_state.data['ANA SORUMLU'].dropna().unique().tolist() if not st.session_state.data.empty else []
 tum_sorumlular = sorted(list(set(kullanici_listesi + gorev_sorumlulari)))
 
@@ -112,12 +113,6 @@ f_durum = st.sidebar.multiselect("📌 Durum", ["Bekliyor", "Devam Ediyor", "Tam
 if f_firma: display_df = display_df[display_df['FİRMA'].isin(f_firma)]
 if f_sorumlu: display_df = display_df[display_df['ANA SORUMLU'].isin(f_sorumlu)]
 if f_durum: display_df = display_df[display_df['DURUM'].isin(f_durum)]
-
-if not display_df.empty:
-    st.sidebar.divider()
-    st.sidebar.markdown("### 📊 Özet")
-    st.sidebar.metric("Listelenen İş", len(display_df))
-    st.sidebar.metric("Tamamlanan", len(display_df[display_df['DURUM'] == 'Tamamlandı']))
 
 # --- 5. SEKMELER ---
 tab_isimleri = []
@@ -137,10 +132,15 @@ if "➕ Yeni Görev" in sekme_sozlugu:
         fid = st.session_state.form_id
         c1, c2 = st.columns(2)
         v_ad = c1.text_input("Görev Adı *", key=f"frm_ad_{fid}")
+        
+        # Alfabetik Firma Seçimi
         v_f_sec = c1.selectbox("Firma *", ["➕ YENİ EKLE..."] + mevcut_firmalar, key=f"frm_f_sec_{fid}")
         v_firma = c1.text_input("Yeni Firma Adı", key=f"frm_f_yeni_{fid}") if v_f_sec == "➕ YENİ EKLE..." else v_f_sec
+        
+        # Alfabetik Sorumlu Seçimi
         v_s_sec = c2.selectbox("Ana Sorumlu *", ["➕ YENİ EKLE..."] + tum_sorumlular, key=f"frm_s_sec_{fid}")
         v_sorumlu = c2.text_input("Yeni Sorumlu Adı", key=f"frm_s_yeni_{fid}") if v_s_sec == "➕ YENİ EKLE..." else v_s_sec
+        
         v_bitis = c2.date_input("Bitiş", datetime.now() + timedelta(days=7), key=f"frm_bit_{fid}")
         v_oncelik = st.selectbox("Öncelik", ["Düşük", "Orta", "Yüksek"], key=f"frm_on_{fid}")
         v_durum = st.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"frm_dr_{fid}")
@@ -151,10 +151,13 @@ if "➕ Yeni Görev" in sekme_sozlugu:
         for i, stg in enumerate(st.session_state.temp_stages):
             ca1, ca2, ca3, ca4 = st.columns([3, 3, 2, 3])
             s_ad = ca1.text_input(f"{i+1}. İşlem", value=stg["Aşama Adı"], key=f"st_ad_{fid}_{i}")
+            
+            # Alfabetik Alt Sorumlu Seçimi
             s_ki_sec = ca2.selectbox("Sorumlu", ["Aynı", "➕ YENİ EKLE..."] + tum_sorumlular, key=f"st_ki_sec_{fid}_{i}")
             if s_ki_sec == "Aynı": s_final_ki = v_sorumlu
             elif s_ki_sec == "➕ YENİ EKLE...": s_final_ki = ca2.text_input("Yeni Sorumlu", key=f"st_ki_y_{fid}_{i}")
             else: s_final_ki = s_ki_sec
+            
             s_dr = ca3.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"st_dr_{fid}_{i}")
             s_nt = ca4.text_input("Not", value=stg["Not"], key=f"st_nt_{fid}_{i}")
             yeni_asamalar.append({"Aşama Adı": s_ad, "Sorumlu": s_final_ki, "Durum": s_dr, "Not": s_nt})
@@ -191,13 +194,16 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
             with st.container(border=True):
                 st.markdown(f"### 🎯 {secili['GÖREV ADI']}")
                 as_df = pd.DataFrame(asamalari_coz(secili['AŞAMALAR']))
+                
                 if st.session_state.aktif_rol == "Guest":
                     st.info(f"**Durum:** {secili['DURUM']} | **Not:** {secili['NOTLAR']}")
                     st.dataframe(as_df, use_container_width=True, hide_index=True)
                 else:
                     c1, c2 = st.columns(2)
-                    y_dr = c1.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"], index=0, key=f"up_dr_{idx}")
+                    y_dr = c1.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"], index=["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"].index(secili['DURUM']) if secili['DURUM'] in ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"] else 0, key=f"up_dr_{idx}")
                     y_nt = c2.text_input("Genel Not", value=str(secili['NOTLAR']), key=f"up_nt_{idx}")
+                    
+                    # Düzenleme modunda da sorumlular alfabetik
                     ed_as = st.data_editor(as_df, num_rows="dynamic", use_container_width=True, key=f"ed_as_{idx}",
                                           column_config={"Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=tum_sorumlular)})
                     if st.button("💾 Güncelle", use_container_width=True):
@@ -207,38 +213,26 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                         veriyi_kaydet(st.session_state.data)
                         st.success("Güncellendi!"); st.rerun()
 
-# ================= TAB: PROFİL AYARLARI (GÜNCELLENDİ) =================
+# ================= TAB: PROFİL VE DİĞERLERİ =================
 with sekme_sozlugu["👤 Profil Ayarları"]:
     st.subheader("👤 Profil Bilgileri")
-    st.info(f"Kullanıcı: **{st.session_state.aktif_kullanici}** | Yetki: **{st.session_state.aktif_rol}**")
-    
     with st.container(border=True):
-        st.markdown("#### 🔑 Şifremi Değiştir")
-        e_pwd = st.text_input("Mevcut Şifre", type="password", key="prof_old")
-        n_pwd = st.text_input("Yeni Şifre", type="password", key="prof_new")
-        n_pwd_c = st.text_input("Yeni Şifre (Tekrar)", type="password", key="prof_new_conf")
-        
+        e_pwd = st.text_input("Mevcut Şifre", type="password", key="p_old")
+        n_pwd = st.text_input("Yeni Şifre", type="password", key="p_new")
+        n_pwd_c = st.text_input("Yeni Şifre (Tekrar)", type="password", key="p_conf")
         if st.button("💾 Şifreyi Güncelle"):
             user_idx = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == st.session_state.aktif_kullanici].index[0]
-            gercek_sifre = str(st.session_state.kullanicilar.at[user_idx, 'SIFRE'])
-            
-            if e_pwd != gercek_sifre:
-                st.error("❌ Mevcut şifre hatalı.")
-            elif n_pwd != n_pwd_c:
-                st.error("❌ Yeni şifreler uyuşmuyor.")
-            elif len(n_pwd) < 4:
-                st.warning("⚠️ Şifre en az 4 karakter olmalı.")
-            else:
+            if str(st.session_state.kullanicilar.at[user_idx, 'SIFRE']) == e_pwd and n_pwd == n_pwd_c and len(n_pwd) >= 4:
                 st.session_state.kullanicilar.at[user_idx, 'SIFRE'] = n_pwd
                 kullanici_kaydet(st.session_state.kullanicilar)
-                st.success("✅ Şifreniz güncellendi!"); st.rerun()
+                st.success("✅ Şifre güncellendi!"); st.rerun()
+            else: st.error("❌ Hatalı bilgi veya şifre uyuşmuyor.")
 
-# ================= DİĞER SEKMELER (RAPOR, YEDEK, ADMİN) =================
 with sekme_sozlugu["📊 Raporlama"]:
     if not display_df.empty:
         c1, c2 = st.columns(2)
-        c1.plotly_chart(px.pie(display_df, names="DURUM", title="Durum Dağılımı"), use_container_width=True)
-        c2.plotly_chart(px.bar(display_df, x="FİRMA", color="DURUM", title="Firma İş Yükü"), use_container_width=True)
+        c1.plotly_chart(px.pie(display_df, names="DURUM", title="İşlerin Durum Dağılımı"), use_container_width=True)
+        c2.plotly_chart(px.bar(display_df, x="FİRMA", color="DURUM", title="Firma Bazlı İş Yükü"), use_container_width=True)
 
 if "⚙️ Veri Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["⚙️ Veri Yönetimi"]:
