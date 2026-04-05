@@ -28,7 +28,6 @@ st.markdown("""
 USER_DB = "kullanicilar.csv"
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Kullanıcı Veritabanı (Yerel)
 def kullanici_yukle():
     if os.path.exists(USER_DB):
         return pd.read_csv(USER_DB)
@@ -46,7 +45,6 @@ def kullanici_yukle():
 def kullanici_kaydet(df):
     df.to_csv(USER_DB, index=False)
 
-# Görev Veritabanı (Google Sheets)
 def veriyi_yukle():
     try:
         df = conn.read(ttl=0)
@@ -58,14 +56,14 @@ def veriyi_yukle():
         return pd.DataFrame(columns=columns)
 
 def veriyi_kaydet(df):
-    # ÇÖZÜM: Hem spreadsheet linki hem de worksheet (Sayfa1) adı açıkça belirtildi
+    # ÇÖZÜM: Boşlukları temizle ve hem spreadsheet hem de worksheet parametrelerini eksiksiz gir.
+    temiz_df = df.fillna("")
     conn.update(
         spreadsheet="https://docs.google.com/spreadsheets/d/1iF2VPQmygjibDXm3Q93COpMu0r4p4odayQZa_0ej0qM/edit?usp=sharing",
         worksheet="Sayfa1",
         data=temiz_df
     )
 
-# Session State Atamaları
 if 'kullanicilar' not in st.session_state: st.session_state.kullanicilar = kullanici_yukle()
 if 'data' not in st.session_state: st.session_state.data = veriyi_yukle()
 
@@ -88,7 +86,6 @@ def formu_sifirla():
         if key.startswith("frm_"): del st.session_state[key]
     st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Ana Sorumlu ile Aynı", "Durum": "Bekliyor", "Not": ""}]
 
-# --- 2. ŞİFRELİ GİRİŞ (LOGIN) SİSTEMİ ---
 if "giris_basarili" not in st.session_state:
     st.session_state.giris_basarili = False
     st.session_state.aktif_kullanici = None
@@ -118,7 +115,6 @@ if not st.session_state.giris_basarili:
     st.info("👈 Lütfen işlem yapabilmek için sol taraftaki menüden şifrenizle giriş yapınız.")
     st.stop()
 
-# --- GİRİŞ YAPILDIKTAN SONRAKİ EKRAN ---
 kullanici = st.session_state.aktif_kullanici
 rol = st.session_state.aktif_rol
 
@@ -141,14 +137,11 @@ display_df = st.session_state.data.copy()
 if f_firma: display_df = display_df[display_df['FİRMA'].isin(f_firma)]
 if f_durum: display_df = display_df[display_df['DURUM'].isin(f_durum)]
 
-
-# --- 3. ANA SEKMELER ---
 if rol == "Admin":
     tab_ekle, tab_liste, tab_rapor, tab_ayarlar, tab_kullanici = st.tabs(["➕ Yeni Görev", "📋 İş Listesi ve Detaylar", "📊 Raporlama", "⚙️ Veri Yönetimi", "👥 Kullanıcı Yönetimi"])
 else:
     tab_ekle, tab_liste, tab_rapor, tab_ayarlar = st.tabs(["➕ Yeni Görev", "📋 İş Listesi ve Detaylar", "📊 Raporlama", "⚙️ Veri Yönetimi"])
 
-# ================= TAB 1: YENİ GÖREV =================
 with tab_ekle:
     c1, c2 = st.columns(2)
     with c1:
@@ -205,7 +198,6 @@ with tab_ekle:
             st.error("Lütfen yıldızlı (*) tüm zorunlu alanları doldurduğunuzdan emin olun!")
 
 
-# ================= TAB 2: LİSTE VE DETAY PANELİ (TIKLANABİLİR) =================
 with tab_liste:
     st.subheader("📋 Ana Görevler Tablosu")
     st.caption("Detaylarını görmek veya düzenlemek istediğiniz görevin üzerine tıklayın.")
@@ -264,19 +256,16 @@ with tab_liste:
     else:
         st.info("Gösterilecek görev bulunamadı.")
 
-# ================= TAB 3: RAPORLAMA =================
 with tab_rapor:
     if not st.session_state.data.empty:
         c1, c2 = st.columns(2)
         c1.plotly_chart(px.bar(st.session_state.data, x="FİRMA", color="DURUM", title="Firma İş Yükü"), use_container_width=True)
         c2.plotly_chart(px.pie(st.session_state.data, names="ANA SORUMLU", hole=0.4, title="Sorumlu Dağılımı"), use_container_width=True)
 
-# ================= TAB 4: VERİ YÖNETİMİ =================
 with tab_ayarlar:
     csv = st.session_state.data.to_csv(index=False).encode('utf-8')
     st.download_button(label="📥 Görev Verilerini Yedekle", data=csv, file_name='tsi_yedek.csv', mime='text/csv')
 
-# ================= TAB 5: KULLANICI YÖNETİMİ (SADECE ADMİN) =================
 if rol == "Admin":
     with tab_kullanici:
         st.subheader("👥 Sisteme Kayıtlı Kullanıcılar")
