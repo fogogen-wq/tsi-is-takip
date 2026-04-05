@@ -83,12 +83,10 @@ if st.sidebar.button("🚪 Çıkış Yap"):
     st.rerun()
 
 # --- ALFABETİK VE ORTAK LİSTELERİ OLUŞTURMA ---
-# Firma Listesi: Hem görevlerdeki ("FİRMA") hem de CRM'deki ("FİRMA_ADI") firmaları birleştir
 firmalar_crm = [str(f).strip() for f in st.session_state.firmalar_db['FİRMA_ADI'].dropna().tolist() if str(f).strip() != ""] if not st.session_state.firmalar_db.empty else []
 firmalar_gorev = [str(f).strip() for f in st.session_state.data['FİRMA'].dropna().tolist() if str(f).strip() != ""] if not st.session_state.data.empty else []
 liste_firmalar = sorted(list(set(firmalar_crm + firmalar_gorev)))
 
-# Sorumlu Listesi: Kullanıcı tablosu + Görevlerdeki isimler
 gorev_sorumlulari = [str(s).strip() for s in st.session_state.data['ANA SORUMLU'].dropna().tolist() if str(s).strip() != ""] if not st.session_state.data.empty else []
 liste_sorumlular = sorted(list(set(kullanici_listesi + gorev_sorumlulari)))
 
@@ -119,20 +117,25 @@ sekme_sozlugu = dict(zip(tabs_list, sekmeler))
 if "➕ Yeni Görev" in sekme_sozlugu:
     with sekme_sozlugu["➕ Yeni Görev"]:
         fid = st.session_state.form_id
+        
+        # Formu daha düzenli göstermek için ikiye bölüyoruz
         c1, c2 = st.columns(2)
         
         v_ad = c1.text_input("Görev Adı *", key=f"frm_ad_{fid}")
         
-        # Firma Seçimi (Yeni Ekle seçeneği geri geldi!)
         v_f_sec = c1.selectbox("Firma *", ["Seçiniz", "➕ YENİ EKLE..."] + liste_firmalar, key=f"frm_f_sec_{fid}")
         v_firma = c1.text_input("Yeni Firma Adı *", key=f"frm_f_yeni_{fid}") if v_f_sec == "➕ YENİ EKLE..." else v_f_sec
         
         v_s_sec = c2.selectbox("Ana Sorumlu *", ["➕ YENİ EKLE..."] + liste_sorumlular, key=f"frm_s_sec_{fid}")
         v_sorumlu = c2.text_input("Yeni Sorumlu Adı", key=f"frm_s_yeni_{fid}") if v_s_sec == "➕ YENİ EKLE..." else v_s_sec
         
+        # Tarih ve Durum alanlarını simetrik yerleştiriyoruz
+        v_basla = c1.date_input("Başlangıç", datetime.now(), key=f"frm_basla_{fid}")
         v_bitis = c2.date_input("Bitiş", datetime.now() + timedelta(days=7), key=f"frm_bit_{fid}")
-        v_oncelik = st.selectbox("Öncelik", ["Düşük", "Orta", "Yüksek"], key=f"frm_on_{fid}")
-        v_durum = st.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"frm_dr_{fid}")
+        
+        v_oncelik = c1.selectbox("Öncelik", ["Düşük", "Orta", "Yüksek"], key=f"frm_on_{fid}")
+        v_durum = c2.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"frm_dr_{fid}")
+        
         v_not = st.text_area("📌 Notlar", key=f"frm_not_{fid}")
 
         st.subheader("🛠 Alt Aşamalar")
@@ -152,7 +155,7 @@ if "➕ Yeni Görev" in sekme_sozlugu:
 
         if st.button("✅ KAYDET", use_container_width=True):
             if v_ad and v_firma and v_firma != "Seçiniz":
-                # EĞER YENİ BİR FİRMA İSE, OTOMATİK OLARAK "FİRMA YÖNETİMİ" (CRM) LİSTESİNE EKLER
+                # Yeni firma eklendiyse CRM'e de otomatik kaydet
                 if v_firma not in firmalar_crm:
                     yeni_firma_satir = pd.DataFrame([{"FİRMA_ADI": v_firma, "YETKİLİ_KİŞİ": "", "EMAIL": "", "TITLE": "", "NOTLAR": ""}])
                     st.session_state.firmalar_db = pd.concat([st.session_state.firmalar_db, yeni_firma_satir], ignore_index=True)
@@ -160,7 +163,8 @@ if "➕ Yeni Görev" in sekme_sozlugu:
 
                 yeni = {
                     'GÖREV ADI': v_ad, 'FİRMA': v_firma, 'ANA SORUMLU': v_sorumlu,
-                    'BAŞLANGIÇ': datetime.now().strftime('%Y-%m-%d'), 'BİTİŞ': v_bitis.strftime('%Y-%m-%d'),
+                    'BAŞLANGIÇ': v_basla.strftime('%Y-%m-%d'), 
+                    'BİTİŞ': v_bitis.strftime('%Y-%m-%d'),
                     'DURUM': v_durum, 'ÖNCELİK': v_oncelik, 'NOTLAR': v_not,
                     'AŞAMALAR': json.dumps([a for a in yeni_asamalar if a["Aşama Adı"].strip()], ensure_ascii=False),
                     'KAYIT_TARIHI': datetime.now().strftime('%Y-%m-%d %H:%M')
