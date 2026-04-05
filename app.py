@@ -83,7 +83,7 @@ if not st.session_state.giris_basarili:
         else: st.sidebar.error("Hatalı Giriş veya Şifre!")
     st.stop()
 
-# --- 4. SIDEBAR VE FİLTRELER ---
+# --- 4. SIDEBAR VE GELİŞMİŞ FİLTRELER ---
 st.sidebar.success(f"Hoş geldin, {st.session_state.aktif_kullanici}!")
 if st.sidebar.button("🚪 Çıkış Yap"):
     st.session_state.giris_basarili = False; st.rerun()
@@ -96,15 +96,29 @@ gorev_sorumlulari = [str(s).strip() for s in st.session_state.data['ANA SORUMLU'
 liste_sorumlular = sorted(list(set(kullanici_listesi + gorev_sorumlulari)))
 
 st.sidebar.divider()
-st.sidebar.markdown("### 🔍 Filtreler")
+st.sidebar.markdown("### 🔍 Detaylı Filtreler")
 display_df = st.session_state.data.copy()
+
 f_firma = st.sidebar.multiselect("🏢 Firma", liste_firmalar)
 f_sorumlu = st.sidebar.multiselect("👤 Sorumlu", liste_sorumlular)
 f_durum = st.sidebar.multiselect("📌 Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"])
+f_oncelik = st.sidebar.multiselect("⚡ Öncelik", ["Yüksek", "Orta", "Düşük"])
+
+st.sidebar.markdown("**📅 Bitiş Tarihine Göre**")
+tarih_aktif = st.sidebar.checkbox("Tarih Aralığı Belirle")
+if tarih_aktif:
+    t1, t2 = st.sidebar.columns(2)
+    bas_tar = t1.date_input("Başlangıç", datetime.now() - timedelta(days=7))
+    bit_tar = t2.date_input("Bitiş", datetime.now() + timedelta(days=30))
 
 if f_firma: display_df = display_df[display_df['FİRMA'].isin(f_firma)]
 if f_sorumlu: display_df = display_df[display_df['ANA SORUMLU'].isin(f_sorumlu)]
 if f_durum: display_df = display_df[display_df['DURUM'].isin(f_durum)]
+if f_oncelik: display_df = display_df[display_df['ÖNCELİK'].isin(f_oncelik)]
+
+if tarih_aktif:
+    temp_dates = pd.to_datetime(display_df['BİTİŞ'], errors='coerce').dt.date
+    display_df = display_df[temp_dates.between(bas_tar, bit_tar)]
 
 # --- 5. SEKMELER ---
 tabs_list = ["➕ Yeni Görev", "📋 İş Listesi ve Detaylar", "📊 Raporlama"]
@@ -132,7 +146,10 @@ if "➕ Yeni Görev" in sekme_sozlugu:
         v_basla = c1.date_input("Başlangıç", datetime.now(), key=f"frm_basla_{fid}")
         v_bitis = c2.date_input("Bitiş", datetime.now() + timedelta(days=7), key=f"frm_bit_{fid}")
         v_oncelik = c1.selectbox("Öncelik", ["Düşük", "Orta", "Yüksek"], key=f"frm_on_{fid}")
-        v_durum = c2.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"frm_dr_{fid}")
+        
+        # GÜNCELLEME: Ana Durum listesine Gecikti ve İptal eklendi
+        v_durum = c2.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"], key=f"frm_dr_{fid}")
+        
         v_not = st.text_area("📌 Notlar", key=f"frm_not_{fid}")
 
         st.subheader("🛠 Alt Aşamalar")
@@ -143,7 +160,10 @@ if "➕ Yeni Görev" in sekme_sozlugu:
             s_ki_sec = ca2.selectbox("Sorumlu", ["Aynı", "➕ YENİ EKLE..."] + liste_sorumlular, key=f"st_ki_sec_{fid}_{i}")
             s_final_ki = (v_sorumlu if s_ki_sec == "Aynı" else (ca2.text_input("Yeni Sorumlu", key=f"st_ki_y_{fid}_{i}") if s_ki_sec == "➕ YENİ EKLE..." else s_ki_sec))
             s_bit = ca3.date_input("Bitiş", datetime.now() + timedelta(days=7), key=f"st_bit_{fid}_{i}")
-            s_dr = ca4.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"st_dr_{fid}_{i}")
+            
+            # GÜNCELLEME: Alt Aşama Durum listesine Gecikti ve İptal eklendi
+            s_dr = ca4.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"], key=f"st_dr_{fid}_{i}")
+            
             s_nt = ca5.text_input("Aşama Notu", value=stg.get("Not", ""), key=f"st_nt_{fid}_{i}")
             
             yeni_asamalar.append({
@@ -184,7 +204,6 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
         sel = st.dataframe(gosterilecek, use_container_width=True, height=350, selection_mode="single-row", on_select="rerun", key="tablo")
         rows = sel.get("selection", {}).get("rows", [])
         
-        # HATA DÜZELTME: FİLTRE YAPILDIĞINDA HAFIZADA KALAN SATIRIN YENİ LİSTEDE OLUP OLMADIĞINI KONTROL EDİYORUZ
         if rows and len(rows) > 0 and rows[0] < len(gosterilecek):
             idx = gosterilecek.index[rows[0]]
             secili = st.session_state.data.loc[idx]
@@ -220,7 +239,8 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                         key=f"ed_as_{idx}", 
                         column_config={
                             "Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=liste_sorumlular),
-                            "Bitiş Tarihi": st.column_config.DateColumn("Bitiş Tarihi", format="YYYY-MM-DD")
+                            "Bitiş Tarihi": st.column_config.DateColumn("Bitiş Tarihi", format="YYYY-MM-DD"),
+                            "Durum": st.column_config.SelectboxColumn("Durum", options=durumlar) # Detaylar tablosundaki durumlar da güncellendi
                         }
                     )
                     
