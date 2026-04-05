@@ -116,4 +116,54 @@ with tab_liste:
                     use_container_width=True,
                     column_config={
                         "Sorumlu": st.column_config.SelectboxColumn(options=sorumlular),
-                        "Durum": st.column_config.SelectboxColumn(options=["Bekliyor", "Devam Ediyor", "Tamam
+                        "Durum": st.column_config.SelectboxColumn(options=["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal"])
+                    },
+                    key=f"editor_{idx}"
+                )
+
+                if st.button("💾 Google Sheets'e Kaydet", use_container_width=True, key=f"btn_save_{idx}"):
+                    st.session_state.data.at[idx, 'DURUM'] = yeni_durum
+                    st.session_state.data.at[idx, 'NOTLAR'] = yeni_not
+                    st.session_state.data.at[idx, 'AŞAMALAR'] = asamalari_paketle(duzenlenen_asamalar.to_dict('records'))
+                    
+                    veriyi_kaydet(st.session_state.data)
+                    st.success("Kaydedildi!")
+                    st.rerun()
+        else:
+            st.info("💡 Detayları görmek için listeden bir işe tıklayın.")
+    else:
+        st.warning("Gösterilecek görev bulunamadı.")
+
+# ================= TAB 2: YENİ GÖREV EKLEME =================
+with tab_ekle:
+    with st.form("yeni_is_formu", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        v_ad = c1.text_input("Görev Adı *")
+        v_firma = c1.text_input("Firma *")
+        
+        v_sorumlu = c2.selectbox("Ana Sorumlu *", sorumlular)
+        v_bitis = c2.date_input("Hedef Bitiş", datetime.now() + timedelta(days=7))
+        
+        v_oncelik = st.selectbox("Öncelik", ["Düşük", "Orta", "Yüksek"])
+        v_not = st.text_area("Notlar")
+        
+        submit = st.form_submit_button("✅ GÖREVİ OLUŞTUR")
+        
+        if submit and v_ad and v_firma:
+            yeni = {
+                'GÖREV ADI': v_ad, 'FİRMA': v_firma, 'ANA SORUMLU': v_sorumlu,
+                'BAŞLANGIÇ': datetime.now().strftime('%Y-%m-%d'), 'BİTİŞ': v_bitis.strftime('%Y-%m-%d'),
+                'DURUM': 'Bekliyor', 'ÖNCELİK': v_oncelik, 'NOTLAR': v_not,
+                'AŞAMALAR': '[]', 'KAYIT_TARIHI': datetime.now().strftime('%Y-%m-%d %H:%M')
+            }
+            st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([yeni])], ignore_index=True)
+            veriyi_kaydet(st.session_state.data)
+            st.success("Yeni görev kaydedildi!")
+            st.rerun()
+
+# ================= TAB 3: RAPORLAMA =================
+with tab_rapor:
+    if not st.session_state.data.empty:
+        c1, c2 = st.columns(2)
+        c1.plotly_chart(px.pie(st.session_state.data, names="DURUM", title="Durum Dağılımı"), use_container_width=True)
+        c2.plotly_chart(px.bar(st.session_state.data, x="ANA SORUMLU", color="DURUM", title="Sorumlu Yükü"), use_container_width=True)
