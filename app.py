@@ -44,7 +44,10 @@ def tablo_yukle(sheet_name, fallback_cols):
         return pd.DataFrame(columns=fallback_cols)
 
 def tablo_kaydet(df, sheet_name):
-    conn.update(spreadsheet=URL, worksheet=sheet_name, data=df.fillna(""))
+    try:
+        conn.update(spreadsheet=URL, worksheet=sheet_name, data=df.fillna(""))
+    except Exception as e:
+        st.error(f"⚠️ Kayıt Hatası: Google Sheets'te '{sheet_name}' adında bir sekme bulunamadı!")
 
 # --- 2. SESSION STATE (BELLEK) ---
 if 'kullanicilar' not in st.session_state: st.session_state.kullanicilar = tablo_yukle("Kullanıcılar", ["KULLANICI_ADI", "SIFRE", "ROL", "EMAIL"])
@@ -53,11 +56,11 @@ if 'data' not in st.session_state: st.session_state.data = tablo_yukle("Sayfa1",
 if 'toplanti_db' not in st.session_state: st.session_state.toplanti_db = tablo_yukle("Toplantı_Notları", ["TARİH", "KONU", "İLGİLİ_FİRMA", "KATILIMCILAR", "NOTLAR"])
 if 'todo_db' not in st.session_state: st.session_state.todo_db = tablo_yukle("Yapilacaklar", ["YAPILACAK_IS", "TAMAMLANDI", "KULLANICI", "ÖNCELİK", "BİTİŞ_TARİHİ"])
 
-if 'temp_stages' not in st.session_state: st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Aynı", "Durum": "Bekliyor", "Not": ""}]
+if 'temp_stages' not in st.session_state: st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Aynı", "Bitiş Tarihi": "", "Durum": "Bekliyor", "Not": ""}]
 
 def formu_sifirla():
     st.session_state.form_id += 1
-    st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Aynı", "Durum": "Bekliyor", "Not": ""}]
+    st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Aynı", "Bitiş Tarihi": "", "Durum": "Bekliyor", "Not": ""}]
     for key in list(st.session_state.keys()):
         if key.startswith("frm_") or key.startswith("st_") or key.startswith("top_"): del st.session_state[key]
 
@@ -135,16 +138,25 @@ if "➕ Yeni Görev" in sekme_sozlugu:
         st.subheader("🛠 Alt Aşamalar")
         yeni_asamalar = []
         for i, stg in enumerate(st.session_state.temp_stages):
-            ca1, ca2, ca3, ca4 = st.columns([3, 3, 2, 3])
-            s_ad = ca1.text_input(f"{i+1}. İşlem", value=stg["Aşama Adı"], key=f"st_ad_{fid}_{i}")
+            # AŞAMALAR İÇİN SÜTUNLAR GÜNCELLENDİ (Bitiş tarihi eklendi)
+            ca1, ca2, ca3, ca4, ca5 = st.columns([3, 2, 2, 2, 3])
+            s_ad = ca1.text_input(f"{i+1}. İşlem", value=stg.get("Aşama Adı", ""), key=f"st_ad_{fid}_{i}")
             s_ki_sec = ca2.selectbox("Sorumlu", ["Aynı", "➕ YENİ EKLE..."] + liste_sorumlular, key=f"st_ki_sec_{fid}_{i}")
             s_final_ki = (v_sorumlu if s_ki_sec == "Aynı" else (ca2.text_input("Yeni Sorumlu", key=f"st_ki_y_{fid}_{i}") if s_ki_sec == "➕ YENİ EKLE..." else s_ki_sec))
-            s_dr = ca3.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"st_dr_{fid}_{i}")
-            s_nt = ca4.text_input("Aşama Notu", value=stg["Not"], key=f"st_nt_{fid}_{i}")
-            yeni_asamalar.append({"Aşama Adı": s_ad, "Sorumlu": s_final_ki, "Durum": s_dr, "Not": s_nt})
+            s_bit = ca3.date_input("Bitiş", datetime.now() + timedelta(days=7), key=f"st_bit_{fid}_{i}")
+            s_dr = ca4.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"st_dr_{fid}_{i}")
+            s_nt = ca5.text_input("Aşama Notu", value=stg.get("Not", ""), key=f"st_nt_{fid}_{i}")
+            
+            yeni_asamalar.append({
+                "Aşama Adı": s_ad, 
+                "Sorumlu": s_final_ki, 
+                "Bitiş Tarihi": s_bit.strftime('%Y-%m-%d'), 
+                "Durum": s_dr, 
+                "Not": s_nt
+            })
 
         if st.button("➕ Aşama Ekle"):
-            st.session_state.temp_stages.append({"Aşama Adı": "", "Sorumlu": "Aynı", "Durum": "Bekliyor", "Not": ""})
+            st.session_state.temp_stages.append({"Aşama Adı": "", "Sorumlu": "Aynı", "Bitiş Tarihi": "", "Durum": "Bekliyor", "Not": ""})
             st.rerun()
 
         if st.button("✅ KAYDET", use_container_width=True):
@@ -185,17 +197,37 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                 durumlar = ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"]
                 mevcut_durum_index = durumlar.index(secili['DURUM']) if secili['DURUM'] in durumlar else 0
                 
+                as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
+                df_as = pd.DataFrame(as_list)
+                
+                # ESKİ KAYITLARI ÇÖKERTMEMEK İÇİN GÜVENLİK KONTROLÜ
+                if df_as.empty:
+                    df_as = pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Bitiş Tarihi", "Durum", "Not"])
+                elif "Bitiş Tarihi" not in df_as.columns:
+                    df_as["Bitiş Tarihi"] = None
+                
                 if st.session_state.aktif_rol == "Guest":
                     st.info(f"**Durum:** {secili['DURUM']} | **Not:** {secili['NOTLAR']}")
-                    as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
-                    st.dataframe(pd.DataFrame(as_list), use_container_width=True, hide_index=True)
+                    st.dataframe(df_as, use_container_width=True, hide_index=True)
                 else:
                     y_dr = c1.selectbox("Durum", durumlar, index=mevcut_durum_index, key=f"up_dr_{idx}")
                     y_nt = c2.text_input("Not", value=str(secili['NOTLAR']) if pd.notna(secili['NOTLAR']) else "", key=f"up_nt_{idx}")
-                    as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
-                    ed_as = st.data_editor(pd.DataFrame(as_list) if as_list else pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Durum", "Not"]), num_rows="dynamic", use_container_width=True, key=f"ed_as_{idx}", column_config={"Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=liste_sorumlular)})
+                    
+                    ed_as = st.data_editor(
+                        df_as, 
+                        num_rows="dynamic", 
+                        use_container_width=True, 
+                        key=f"ed_as_{idx}", 
+                        column_config={
+                            "Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=liste_sorumlular),
+                            "Bitiş Tarihi": st.column_config.DateColumn("Bitiş Tarihi", format="YYYY-MM-DD")
+                        }
+                    )
                     
                     if st.button("💾 Güncelle", use_container_width=True):
+                        # Kaydederken Data Editor'dan gelen Date formatını tekrar metne çeviriyoruz (JSON hatası olmaması için)
+                        ed_as['Bitiş Tarihi'] = pd.to_datetime(ed_as['Bitiş Tarihi'], errors='coerce').dt.strftime('%Y-%m-%d').fillna("")
+                        
                         st.session_state.data.at[idx, 'DURUM'] = y_dr
                         st.session_state.data.at[idx, 'NOTLAR'] = y_nt
                         st.session_state.data.at[idx, 'AŞAMALAR'] = json.dumps(ed_as.to_dict('records'), ensure_ascii=False)
@@ -279,7 +311,6 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
         st.caption(f"Hoş geldin {st.session_state.aktif_kullanici}! İşlerini önceliklendir, tarih ver ve ilerlemeni takip et.")
         
         kullanici_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] == st.session_state.aktif_kullanici].copy()
-        
         kullanici_todos['BİTİŞ_TARİHİ'] = pd.to_datetime(kullanici_todos['BİTİŞ_TARİHİ'], errors='coerce')
         kullanici_todos['TAMAMLANDI'] = kullanici_todos['TAMAMLANDI'].astype(str).str.upper().isin(['TRUE', '1', 'TRUE.0'])
         
@@ -295,11 +326,7 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
         kullanici_todos = kullanici_todos.sort_values(by=['TAMAMLANDI'])
         
         ed_todos = st.data_editor(
-            kullanici_todos,
-            num_rows="dynamic",
-            use_container_width=True,
-            hide_index=True,
-            key="todo_editor_modern",
+            kullanici_todos, num_rows="dynamic", use_container_width=True, hide_index=True, key="todo_editor_modern",
             column_config={
                 "TAMAMLANDI": st.column_config.CheckboxColumn("✅ Bitti", default=False, width="small"),
                 "YAPILACAK_IS": st.column_config.TextColumn("📝 Ne Yapılacak?", required=True, width="large"),
@@ -316,8 +343,7 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
             diger_kullanicilar_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] != st.session_state.aktif_kullanici]
             st.session_state.todo_db = pd.concat([diger_kullanicilar_todos, ed_todos], ignore_index=True)
             tablo_kaydet(st.session_state.todo_db, "Yapilacaklar")
-            st.success("Kişisel listeniz başarıyla güncellendi!")
-            st.rerun()
+            st.success("Kişisel listeniz başarıyla güncellendi!"); st.rerun()
 
 # ================= TAB: VERİ YÖNETİMİ =================
 if "⚙️ Veri Yönetimi" in sekme_sozlugu:
@@ -338,36 +364,24 @@ with sekme_sozlugu["👤 Profil Ayarları"]:
                 tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar"); st.success("✅ Güncellendi!"); st.rerun()
             else: st.error("❌ Hata!")
 
-# ================= TAB: KULLANICI YÖNETİMİ (GÜNCELLENDİ) =================
+# ================= TAB: KULLANICI YÖNETİMİ =================
 if "👥 Kullanıcı Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["👥 Kullanıcı Yönetimi"]:
         st.subheader("👥 Kullanıcı ve Erişim Yönetimi")
         st.info("🔒 Güvenlik gereği şifreler tabloda gizlenmiştir. Listeye yeni eklediğiniz kullanıcıların şifresi otomatik olarak **'1234'** belirlenir. Aşağıdaki alandan şifreleri güvenle değiştirebilirsiniz.")
         
-        # SIFRE sütunu tablodan tamamen gizlendi
         ed_u = st.data_editor(
-            st.session_state.kullanicilar, 
-            num_rows="dynamic", 
-            use_container_width=True, 
-            column_config={
-                "KULLANICI_ADI": st.column_config.TextColumn("Kullanıcı Adı", required=True),
-                "SIFRE": None, # ŞİFREYİ GÖZDEN SAKLA
-                "ROL": st.column_config.SelectboxColumn("Yetki Rolü", options=["Admin", "User", "Guest"]),
-                "EMAIL": st.column_config.TextColumn("E-Posta Adresi")
-            }
+            st.session_state.kullanicilar, num_rows="dynamic", use_container_width=True, 
+            column_config={"KULLANICI_ADI": st.column_config.TextColumn("Kullanıcı Adı", required=True), "SIFRE": None, "ROL": st.column_config.SelectboxColumn("Yetki Rolü", options=["Admin", "User", "Guest"]), "EMAIL": st.column_config.TextColumn("E-Posta Adresi")}
         )
         
         if st.button("💾 Kullanıcıları Kaydet"):
-            # Eğer admin yeni bir kullanıcı eklediyse, şifresi boştur. Ona otomatik 1234 ata.
             ed_u['SIFRE'] = ed_u['SIFRE'].fillna("1234").replace("", "1234")
             st.session_state.kullanicilar = ed_u
             tablo_kaydet(ed_u, "Kullanıcılar")
-            st.success("Kullanıcılar başarıyla kaydedildi!")
-            st.rerun()
+            st.success("Kullanıcılar başarıyla kaydedildi!"); st.rerun()
             
         st.divider()
-        
-        # GÜVENLİ ŞİFRE SIFIRLAMA ALANI
         st.markdown("#### 🔑 Güvenli Şifre Sıfırlama")
         c1, c2 = st.columns(2)
         kullanici_isimleri = ed_u['KULLANICI_ADI'].dropna().unique().tolist()
