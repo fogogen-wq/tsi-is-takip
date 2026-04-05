@@ -51,12 +51,7 @@ if 'kullanicilar' not in st.session_state: st.session_state.kullanicilar = tablo
 if 'firmalar_db' not in st.session_state: st.session_state.firmalar_db = tablo_yukle("Firmalar", ["FİRMA_ADI", "YETKİLİ_KİŞİ", "EMAIL", "TITLE", "NOTLAR"])
 if 'data' not in st.session_state: st.session_state.data = tablo_yukle("Sayfa1", ['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BAŞLANGIÇ', 'BİTİŞ', 'DURUM', 'ÖNCELİK', 'NOTLAR', 'AŞAMALAR', 'KAYIT_TARIHI'])
 if 'toplanti_db' not in st.session_state: st.session_state.toplanti_db = tablo_yukle("Toplantı_Notları", ["TARİH", "KONU", "İLGİLİ_FİRMA", "KATILIMCILAR", "NOTLAR"])
-
-# YENİ EKLENTİ: YAPILACAKLAR LİSTESİ (MODERNİZE EDİLDİ)
-if 'todo_db' not in st.session_state: 
-    df_todo = tablo_yukle("Yapilacaklar", ["YAPILACAK_IS", "TAMAMLANDI", "KULLANICI", "ÖNCELİK", "BİTİŞ_TARİHİ"])
-    df_todo['TAMAMLANDI'] = df_todo['TAMAMLANDI'].astype(str).str.upper().isin(['TRUE', '1'])
-    st.session_state.todo_db = df_todo
+if 'todo_db' not in st.session_state: st.session_state.todo_db = tablo_yukle("Yapilacaklar", ["YAPILACAK_IS", "TAMAMLANDI", "KULLANICI", "ÖNCELİK", "BİTİŞ_TARİHİ"])
 
 if 'temp_stages' not in st.session_state: st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Aynı", "Durum": "Bekliyor", "Not": ""}]
 
@@ -285,6 +280,11 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
         
         kullanici_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] == st.session_state.aktif_kullanici].copy()
         
+        # --- TİP KORUMASI (HATA ÇÖZÜMÜ BURADA) ---
+        # Streamlit DateColumn ve CheckboxColumn için verileri hatasız formata (Datetime ve Boolean) çeviriyoruz.
+        kullanici_todos['BİTİŞ_TARİHİ'] = pd.to_datetime(kullanici_todos['BİTİŞ_TARİHİ'], errors='coerce')
+        kullanici_todos['TAMAMLANDI'] = kullanici_todos['TAMAMLANDI'].astype(str).str.upper().isin(['TRUE', '1', 'TRUE.0'])
+        
         # 1. Görsel İlerleme (Gamification - Progress Bar)
         toplam_is = len(kullanici_todos)
         biten_is = len(kullanici_todos[kullanici_todos['TAMAMLANDI'] == True])
@@ -295,10 +295,10 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
         else:
             st.info("Harika! Şimdilik yapılacak işin görünmüyor. Yeni bir görev ekleyebilirsin.")
         
-        # Biten işleri otomatik en alta atma (Auto-sorting)
+        # Biten işleri otomatik en alta atma
         kullanici_todos = kullanici_todos.sort_values(by=['TAMAMLANDI'])
         
-        # 2. Modern Tablo Ayarları (Öncelik ve Tarih)
+        # 2. Modern Tablo Ayarları
         ed_todos = st.data_editor(
             kullanici_todos,
             num_rows="dynamic",
@@ -310,12 +310,16 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
                 "YAPILACAK_IS": st.column_config.TextColumn("📝 Ne Yapılacak?", required=True, width="large"),
                 "ÖNCELİK": st.column_config.SelectboxColumn("⚡ Öncelik", options=["🔴 Yüksek", "🟡 Orta", "🟢 Düşük"], width="medium"),
                 "BİTİŞ_TARİHİ": st.column_config.DateColumn("📅 Bitiş Tarihi", format="YYYY-MM-DD", width="medium"),
-                "KULLANICI": None # Arka planda kalır, ekranda yer kaplamaz
+                "KULLANICI": None 
             }
         )
         
         if st.button("💾 Değişiklikleri Kaydet", use_container_width=True):
             ed_todos['KULLANICI'] = st.session_state.aktif_kullanici
+            
+            # Kaydederken verileri tekrar "String" (Metin) yapıyoruz ki Google Sheets sapıtmasın
+            ed_todos['BİTİŞ_TARİHİ'] = pd.to_datetime(ed_todos['BİTİŞ_TARİHİ'], errors='coerce').dt.strftime('%Y-%m-%d').fillna("")
+            ed_todos['TAMAMLANDI'] = ed_todos['TAMAMLANDI'].astype(str)
             
             diger_kullanicilar_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] != st.session_state.aktif_kullanici]
             st.session_state.todo_db = pd.concat([diger_kullanicilar_todos, ed_todos], ignore_index=True)
