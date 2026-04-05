@@ -147,7 +147,7 @@ with tab_objs[0]:
     for i, stg in enumerate(st.session_state.temp_stages):
         ca1, ca2, ca3, ca4 = st.columns([3, 2, 2, 3])
         s_ad = ca1.text_input("İşlem", value=stg["Aşama Adı"], key=f"st_ad_{fid}_{i}")
-        s_ki = ca2.selectbox("Sorumlu", ["Aynı"] + sorumlular, key=f_st_ki_{fid}_{i}")
+        s_ki = ca2.selectbox("Sorumlu", ["Aynı"] + sorumlular, key=f"st_ki_{fid}_{i}")
         s_dr = ca3.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"st_dr_{fid}_{i}")
         s_nt = ca4.text_input("Not", value=stg["Not"], key=f"st_nt_{fid}_{i}")
         yeni_asamalar.append({"Aşama Adı": s_ad, "Sorumlu": v_sorumlu if s_ki=="Aynı" else s_ki, "Durum": s_dr, "Not": s_nt})
