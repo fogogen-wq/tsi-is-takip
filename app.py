@@ -138,7 +138,6 @@ if "➕ Yeni Görev" in sekme_sozlugu:
         st.subheader("🛠 Alt Aşamalar")
         yeni_asamalar = []
         for i, stg in enumerate(st.session_state.temp_stages):
-            # AŞAMALAR İÇİN SÜTUNLAR GÜNCELLENDİ (Bitiş tarihi eklendi)
             ca1, ca2, ca3, ca4, ca5 = st.columns([3, 2, 2, 2, 3])
             s_ad = ca1.text_input(f"{i+1}. İşlem", value=stg.get("Aşama Adı", ""), key=f"st_ad_{fid}_{i}")
             s_ki_sec = ca2.selectbox("Sorumlu", ["Aynı", "➕ YENİ EKLE..."] + liste_sorumlular, key=f"st_ki_sec_{fid}_{i}")
@@ -200,7 +199,6 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                 as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
                 df_as = pd.DataFrame(as_list)
                 
-                # ESKİ KAYITLARI ÇÖKERTMEMEK İÇİN GÜVENLİK KONTROLÜ
                 if df_as.empty:
                     df_as = pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Bitiş Tarihi", "Durum", "Not"])
                 elif "Bitiş Tarihi" not in df_as.columns:
@@ -225,9 +223,7 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                     )
                     
                     if st.button("💾 Güncelle", use_container_width=True):
-                        # Kaydederken Data Editor'dan gelen Date formatını tekrar metne çeviriyoruz (JSON hatası olmaması için)
                         ed_as['Bitiş Tarihi'] = pd.to_datetime(ed_as['Bitiş Tarihi'], errors='coerce').dt.strftime('%Y-%m-%d').fillna("")
-                        
                         st.session_state.data.at[idx, 'DURUM'] = y_dr
                         st.session_state.data.at[idx, 'NOTLAR'] = y_nt
                         st.session_state.data.at[idx, 'AŞAMALAR'] = json.dumps(ed_as.to_dict('records'), ensure_ascii=False)
@@ -272,11 +268,24 @@ with sekme_sozlugu["📊 Raporlama"]:
 if "🏢 Firma Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["🏢 Firma Yönetimi"]:
         st.subheader("🏢 Firma ve Rehber Yönetimi")
-        ed_firmalar = st.data_editor(st.session_state.firmalar_db, num_rows="dynamic", use_container_width=True, key="crm_editor",
-            column_config={"FİRMA_ADI": st.column_config.TextColumn("Firma Adı *", required=True), "EMAIL": st.column_config.TextColumn("E-Posta")})
+        
+        # HATA DÜZELTME: Veriyi data editor'e göndermeden önce KESİN metne çeviriyoruz.
+        st.session_state.firmalar_db = st.session_state.firmalar_db.fillna("").astype(str)
+        
+        ed_firmalar = st.data_editor(
+            st.session_state.firmalar_db, 
+            num_rows="dynamic", 
+            use_container_width=True, 
+            key="crm_editor",
+            column_config={
+                "FİRMA_ADI": st.column_config.TextColumn("Firma Adı *", required=True), 
+                "EMAIL": st.column_config.TextColumn("E-Posta")
+            }
+        )
         if st.button("💾 Firma Bilgilerini Kaydet"):
-            st.session_state.firmalar_db = ed_firmalar
-            tablo_kaydet(ed_firmalar, "Firmalar"); st.success("Rehber güncellendi!"); st.rerun()
+            st.session_state.firmalar_db = ed_firmalar.fillna("").astype(str)
+            tablo_kaydet(st.session_state.firmalar_db, "Firmalar")
+            st.success("Rehber güncellendi!"); st.rerun()
 
 # ================= TAB: TOPLANTI VE NOTLAR =================
 if "📝 Toplantı & Notlar" in sekme_sozlugu:
@@ -304,7 +313,7 @@ if "📝 Toplantı & Notlar" in sekme_sozlugu:
                 st.session_state.toplanti_db = ed_notlar
                 tablo_kaydet(ed_notlar, "Toplantı_Notları"); st.success("Arşiv güncellendi!"); st.rerun()
 
-# ================= TAB: YAPILACAKLAR (MODERNİZE EDİLDİ) =================
+# ================= TAB: YAPILACAKLAR =================
 if "✅ Yapılacaklar" in sekme_sozlugu:
     with sekme_sozlugu["✅ Yapılacaklar"]:
         st.subheader("✅ Akıllı Yapılacaklar Ajandası (To-Do)")
@@ -345,10 +354,11 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
             tablo_kaydet(st.session_state.todo_db, "Yapilacaklar")
             st.success("Kişisel listeniz başarıyla güncellendi!"); st.rerun()
 
-# ================= TAB: VERİ YÖNETİMİ =================
+# ================= TAB: VERİ YÖNETİMİ (EXCEL İNDİRME DÜZELTİLDİ) =================
 if "⚙️ Veri Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["⚙️ Veri Yönetimi"]:
-        st.download_button("📥 İş Listesini İndir", display_df.to_csv(index=False).encode('utf-8'), "tsi_is_takibi.csv", "text/csv")
+        # HATA DÜZELTME: utf-8 yerine utf-8-sig kullanılarak Excel'de Türkçe karakterlerin bozulması engellendi.
+        st.download_button("📥 İş Listesini İndir", display_df.to_csv(index=False).encode('utf-8-sig'), "tsi_is_takibi.csv", "text/csv")
 
 # ================= TAB: PROFİL AYARLARI =================
 with sekme_sozlugu["👤 Profil Ayarları"]:
