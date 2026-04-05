@@ -50,8 +50,14 @@ def tablo_kaydet(df, sheet_name):
 if 'kullanicilar' not in st.session_state: st.session_state.kullanicilar = tablo_yukle("Kullanıcılar", ["KULLANICI_ADI", "SIFRE", "ROL", "EMAIL"])
 if 'firmalar_db' not in st.session_state: st.session_state.firmalar_db = tablo_yukle("Firmalar", ["FİRMA_ADI", "YETKİLİ_KİŞİ", "EMAIL", "TITLE", "NOTLAR"])
 if 'data' not in st.session_state: st.session_state.data = tablo_yukle("Sayfa1", ['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BAŞLANGIÇ', 'BİTİŞ', 'DURUM', 'ÖNCELİK', 'NOTLAR', 'AŞAMALAR', 'KAYIT_TARIHI'])
-# YENİ EKLENTİ: Toplantı Notları Veritabanı
 if 'toplanti_db' not in st.session_state: st.session_state.toplanti_db = tablo_yukle("Toplantı_Notları", ["TARİH", "KONU", "İLGİLİ_FİRMA", "KATILIMCILAR", "NOTLAR"])
+
+# YENİ EKLENTİ: YAPILACAKLAR LİSTESİ VERİTABANI
+if 'todo_db' not in st.session_state: 
+    df_todo = tablo_yukle("Yapilacaklar", ["YAPILACAK_IS", "TAMAMLANDI", "KULLANICI"])
+    # Checkbox'ların çalışması için metinleri True/False (Boolean) değerlere çeviriyoruz
+    df_todo['TAMAMLANDI'] = df_todo['TAMAMLANDI'].astype(str).str.upper().isin(['TRUE', '1'])
+    st.session_state.todo_db = df_todo
 
 if 'temp_stages' not in st.session_state: st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Aynı", "Durum": "Bekliyor", "Not": ""}]
 
@@ -107,7 +113,8 @@ if f_durum: display_df = display_df[display_df['DURUM'].isin(f_durum)]
 tabs_list = ["➕ Yeni Görev", "📋 İş Listesi ve Detaylar", "📊 Raporlama"]
 if st.session_state.aktif_rol in ["Admin", "User"]:
     tabs_list.append("🏢 Firma Yönetimi")
-    tabs_list.append("📝 Toplantı & Notlar") # YENİ SEKME EKLENDİ
+    tabs_list.append("📝 Toplantı & Notlar")
+    tabs_list.append("✅ Yapılacaklar") # YENİ CHECKLIST SEKMESİ
     tabs_list.append("⚙️ Veri Yönetimi")
 tabs_list.append("👤 Profil Ayarları")
 if st.session_state.aktif_rol == "Admin": tabs_list.append("👥 Kullanıcı Yönetimi")
@@ -245,62 +252,66 @@ if "🏢 Firma Yönetimi" in sekme_sozlugu:
             st.session_state.firmalar_db = ed_firmalar
             tablo_kaydet(ed_firmalar, "Firmalar"); st.success("Rehber güncellendi!"); st.rerun()
 
-# ================= TAB: TOPLANTI VE NOTLAR (YENİ MODÜL) =================
+# ================= TAB: TOPLANTI VE NOTLAR =================
 if "📝 Toplantı & Notlar" in sekme_sozlugu:
     with sekme_sozlugu["📝 Toplantı & Notlar"]:
-        st.subheader("📝 Toplantı Notları ve Yapılacaklar (Hızlı Not)")
-        st.caption("Toplantı esnasında aldığınız notları ve çıkardığınız aksiyonları buraya kaydedebilirsiniz.")
-        
-        # YENİ NOT EKLEME FORMU
+        st.subheader("📝 Toplantı Notları")
         with st.container(border=True):
             fid = st.session_state.form_id
             col1, col2 = st.columns(2)
             t_tarih = col1.date_input("Toplantı Tarihi", datetime.now(), key=f"top_tarih_{fid}")
             t_konu = col1.text_input("Toplantı Konusu / Başlık *", key=f"top_konu_{fid}")
             t_firma = col2.selectbox("İlgili Firma", ["Seçiniz (Bağımsız Not)"] + liste_firmalar, key=f"top_firma_{fid}")
-            t_kisi = col2.text_input("Katılımcılar", placeholder="Örn: Zilan, Uğur, Müşteri...", key=f"top_kisi_{fid}")
-            
-            t_notlar = st.text_area("Toplantı Notları ve Yapılacaklar Listesi", height=150, placeholder="Konuşulanları ve çıkardığınız yapılacaklar (To-Do) listesini buraya yazın...", key=f"top_not_{fid}")
-            
+            t_kisi = col2.text_input("Katılımcılar", placeholder="Örn: Zilan, Uğur...", key=f"top_kisi_{fid}")
+            t_notlar = st.text_area("Toplantı Notları", height=100, key=f"top_not_{fid}")
             if st.button("💾 Notu Kaydet", use_container_width=True):
                 if t_konu:
-                    yeni_not = {
-                        "TARİH": t_tarih.strftime('%Y-%m-%d'),
-                        "KONU": t_konu,
-                        "İLGİLİ_FİRMA": "" if t_firma == "Seçiniz (Bağımsız Not)" else t_firma,
-                        "KATILIMCILAR": t_kisi,
-                        "NOTLAR": t_notlar
-                    }
+                    yeni_not = {"TARİH": t_tarih.strftime('%Y-%m-%d'), "KONU": t_konu, "İLGİLİ_FİRMA": "" if t_firma == "Seçiniz (Bağımsız Not)" else t_firma, "KATILIMCILAR": t_kisi, "NOTLAR": t_notlar}
                     st.session_state.toplanti_db = pd.concat([st.session_state.toplanti_db, pd.DataFrame([yeni_not])], ignore_index=True)
-                    tablo_kaydet(st.session_state.toplanti_db, "Toplantı_Notları")
-                    st.success("Toplantı notu başarıyla kaydedildi!")
-                    formu_sifirla()
-                    st.rerun()
-                else:
-                    st.error("Lütfen en azından bir Toplantı Konusu/Başlığı girin.")
+                    tablo_kaydet(st.session_state.toplanti_db, "Toplantı_Notları"); st.success("Kaydedildi!"); formu_sifirla(); st.rerun()
+                else: st.error("Lütfen Toplantı Konusu girin.")
         
-        # GEÇMİŞ NOTLARI GÖRÜNTÜLEME
-        st.markdown("### 📚 Geçmiş Toplantı Notları Arşivi")
+        st.markdown("### 📚 Arşiv")
         if not st.session_state.toplanti_db.empty:
-            gosterilecek_notlar = st.session_state.toplanti_db.sort_values(by="TARİH", ascending=False)
-            
-            # Notları detaylı okuyabilmek için Data Editor kullanıyoruz
-            ed_notlar = st.data_editor(
-                gosterilecek_notlar, 
-                use_container_width=True, 
-                num_rows="dynamic",
-                key="toplanti_editor",
-                column_config={
-                    "NOTLAR": st.column_config.TextColumn("Notlar (Genişletmek için çift tıklayın)", width="large")
-                }
-            )
-            if st.button("💾 Not Arşivinde Yapılan Değişiklikleri Kaydet"):
+            ed_notlar = st.data_editor(st.session_state.toplanti_db.sort_values(by="TARİH", ascending=False), use_container_width=True, num_rows="dynamic", key="toplanti_editor")
+            if st.button("💾 Arşivi Kaydet"):
                 st.session_state.toplanti_db = ed_notlar
-                tablo_kaydet(ed_notlar, "Toplantı_Notları")
-                st.success("Not arşivi güncellendi!")
-                st.rerun()
-        else:
-            st.info("Henüz kaydedilmiş bir toplantı notu bulunmuyor.")
+                tablo_kaydet(ed_notlar, "Toplantı_Notları"); st.success("Arşiv güncellendi!"); st.rerun()
+
+# ================= TAB: YAPILACAKLAR (CHECKLIST) YENİ! =================
+if "✅ Yapılacaklar" in sekme_sozlugu:
+    with sekme_sozlugu["✅ Yapılacaklar"]:
+        st.subheader("✅ Kişisel Yapılacaklar Listesi (To-Do)")
+        st.caption(f"Sadece size ({st.session_state.aktif_kullanici}) ait olan hızlı işleri buradan takip edebilir, bittikçe kutucukları işaretleyebilirsiniz.")
+        
+        # Sadece o anki kullanıcıya ait olan yapılacakları filtreliyoruz
+        kullanici_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] == st.session_state.aktif_kullanici].copy()
+        
+        # Checkbox sütunu ve ayarları
+        ed_todos = st.data_editor(
+            kullanici_todos,
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            key="todo_editor",
+            column_config={
+                "TAMAMLANDI": st.column_config.CheckboxColumn("✅ Bitti mi?", default=False, width="small"),
+                "YAPILACAK_IS": st.column_config.TextColumn("📝 Ne Yapılacak?", required=True, width="large"),
+                "KULLANICI": None # Kullanıcı sütununu ekranda gizle ki kalabalık yapmasın
+            }
+        )
+        
+        if st.button("💾 Listemi Kaydet", use_container_width=True):
+            # Yeni satırlar eklendiyse onlara otomatik olarak aktif kullanıcı adını ata
+            ed_todos['KULLANICI'] = st.session_state.aktif_kullanici
+            
+            # Ana veritabanından bu kullanıcının eski kayıtlarını sil, yenilerini (düzenlenmiş halini) ekle
+            diger_kullanicilar_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] != st.session_state.aktif_kullanici]
+            st.session_state.todo_db = pd.concat([diger_kullanicilar_todos, ed_todos], ignore_index=True)
+            
+            tablo_kaydet(st.session_state.todo_db, "Yapilacaklar")
+            st.success("Kişisel listeniz başarıyla güncellendi!")
+            st.rerun()
 
 # ================= TAB: VERİ YÖNETİMİ =================
 if "⚙️ Veri Yönetimi" in sekme_sozlugu:
