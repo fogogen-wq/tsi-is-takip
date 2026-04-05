@@ -28,7 +28,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 if 'form_id' not in st.session_state:
     st.session_state.form_id = 0  
 
-# --- VERİ YÜKLEME/KAYDETME FONKSİYONLARI ---
+# --- VERİ YÖNETİMİ FONKSİYONLARI ---
 def kullanici_yukle():
     try:
         df = conn.read(worksheet="Kullanıcılar", ttl=0)
@@ -53,12 +53,9 @@ def veriyi_kaydet(df):
     conn.update(spreadsheet=URL, worksheet="Sayfa1", data=df.fillna(""))
 
 # --- 2. SESSION STATE ---
-if 'kullanicilar' not in st.session_state:
-    st.session_state.kullanicilar = kullanici_yukle()
-if 'data' not in st.session_state:
-    st.session_state.data = veriyi_yukle()
-if 'temp_stages' not in st.session_state:
-    st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Aynı", "Durum": "Bekliyor", "Not": ""}]
+if 'kullanicilar' not in st.session_state: st.session_state.kullanicilar = kullanici_yukle()
+if 'data' not in st.session_state: st.session_state.data = veriyi_yukle()
+if 'temp_stages' not in st.session_state: st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Aynı", "Durum": "Bekliyor", "Not": ""}]
 
 def formu_sifirla():
     st.session_state.form_id += 1
@@ -79,7 +76,6 @@ def asamalari_paketle(asama_listesi):
 if "giris_basarili" not in st.session_state:
     st.session_state.giris_basarili, st.session_state.aktif_kullanici, st.session_state.aktif_rol = False, None, None
 
-# Kullanıcı listesini güncel tut (Admin panelinde eklenenler dahil)
 kullanici_listesi = sorted(st.session_state.kullanicilar['KULLANICI_ADI'].unique().tolist())
 
 if not st.session_state.giris_basarili:
@@ -96,21 +92,19 @@ if not st.session_state.giris_basarili:
             else: st.sidebar.error("Hatalı şifre!")
     st.stop()
 
-# --- 4. ANA EKRAN VE FİLTRELER ---
+# --- 4. SIDEBAR (SOL MENÜ) ---
 st.sidebar.success(f"Hoş geldin, {st.session_state.aktif_kullanici}!")
 if st.sidebar.button("🚪 Çıkış Yap"):
     st.session_state.giris_basarili = False
     st.rerun()
 
-# Dinamik Listeler (Hem görev verisinden hem kullanıcı tablosundan beslenir)
 mevcut_firmalar = sorted(st.session_state.data['FİRMA'].dropna().unique().tolist()) if not st.session_state.data.empty else ["Akgıda", "Tegep"]
-# Sorumlu listesine hem mevcut kullanıcıları hem de görevlerde manuel girilmiş isimleri ekleyelim
-gorevdeki_sorumlular = st.session_state.data['ANA SORUMLU'].dropna().unique().tolist() if not st.session_state.data.empty else []
-tum_sorumlular = sorted(list(set(kullanici_listesi + gorevdeki_sorumlular)))
+gorev_sorumlulari = st.session_state.data['ANA SORUMLU'].dropna().unique().tolist() if not st.session_state.data.empty else []
+tum_sorumlular = sorted(list(set(kullanici_listesi + gorev_sorumlulari)))
 
 st.sidebar.divider()
-display_df = st.session_state.data.copy()
 st.sidebar.markdown("### 🔍 Filtreler")
+display_df = st.session_state.data.copy()
 f_firma = st.sidebar.multiselect("🏢 Firma", mevcut_firmalar)
 f_sorumlu = st.sidebar.multiselect("👤 Sorumlu", tum_sorumlular)
 f_durum = st.sidebar.multiselect("📌 Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"])
@@ -125,7 +119,7 @@ if not display_df.empty:
     st.sidebar.metric("Listelenen İş", len(display_df))
     st.sidebar.metric("Tamamlanan", len(display_df[display_df['DURUM'] == 'Tamamlandı']))
 
-# --- 5. DİNAMİK SEKMELER ---
+# --- 5. SEKMELER ---
 tab_isimleri = []
 if st.session_state.aktif_rol in ["Admin", "User"]: tab_isimleri.append("➕ Yeni Görev")
 tab_isimleri.append("📋 İş Listesi ve Detaylar")
@@ -142,17 +136,11 @@ if "➕ Yeni Görev" in sekme_sozlugu:
     with sekme_sozlugu["➕ Yeni Görev"]:
         fid = st.session_state.form_id
         c1, c2 = st.columns(2)
-        
         v_ad = c1.text_input("Görev Adı *", key=f"frm_ad_{fid}")
-        
-        # FIRMA SEÇİMİ
-        v_firma_sec = c1.selectbox("Firma *", ["➕ YENİ EKLE..."] + mevcut_firmalar, key=f"frm_f_sec_{fid}")
-        v_firma = c1.text_input("Yeni Firma Adı", key=f"frm_f_yeni_{fid}") if v_firma_sec == "➕ YENİ EKLE..." else v_firma_sec
-        
-        # ANA SORUMLU SEÇİMİ (YENİ ÖZELLİK)
-        v_sorumlu_sec = c2.selectbox("Ana Sorumlu *", ["➕ YENİ EKLE..."] + tum_sorumlular, key=f"frm_s_sec_{fid}")
-        v_sorumlu = c2.text_input("Yeni Sorumlu Adı", key=f"frm_s_yeni_{fid}") if v_sorumlu_sec == "➕ YENİ EKLE..." else v_sorumlu_sec
-        
+        v_f_sec = c1.selectbox("Firma *", ["➕ YENİ EKLE..."] + mevcut_firmalar, key=f"frm_f_sec_{fid}")
+        v_firma = c1.text_input("Yeni Firma Adı", key=f"frm_f_yeni_{fid}") if v_f_sec == "➕ YENİ EKLE..." else v_f_sec
+        v_s_sec = c2.selectbox("Ana Sorumlu *", ["➕ YENİ EKLE..."] + tum_sorumlular, key=f"frm_s_sec_{fid}")
+        v_sorumlu = c2.text_input("Yeni Sorumlu Adı", key=f"frm_s_yeni_{fid}") if v_s_sec == "➕ YENİ EKLE..." else v_s_sec
         v_bitis = c2.date_input("Bitiş", datetime.now() + timedelta(days=7), key=f"frm_bit_{fid}")
         v_oncelik = st.selectbox("Öncelik", ["Düşük", "Orta", "Yüksek"], key=f"frm_on_{fid}")
         v_durum = st.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"frm_dr_{fid}")
@@ -163,13 +151,10 @@ if "➕ Yeni Görev" in sekme_sozlugu:
         for i, stg in enumerate(st.session_state.temp_stages):
             ca1, ca2, ca3, ca4 = st.columns([3, 3, 2, 3])
             s_ad = ca1.text_input(f"{i+1}. İşlem", value=stg["Aşama Adı"], key=f"st_ad_{fid}_{i}")
-            
-            # ALT AŞAMA SORUMLU SEÇİMİ (YENİ ÖZELLİK)
             s_ki_sec = ca2.selectbox("Sorumlu", ["Aynı", "➕ YENİ EKLE..."] + tum_sorumlular, key=f"st_ki_sec_{fid}_{i}")
             if s_ki_sec == "Aynı": s_final_ki = v_sorumlu
-            elif s_ki_sec == "➕ YENİ EKLE...": s_final_ki = ca2.text_input("Sorumlu Adı", key=f"st_ki_yeni_{fid}_{i}")
+            elif s_ki_sec == "➕ YENİ EKLE...": s_final_ki = ca2.text_input("Yeni Sorumlu", key=f"st_ki_y_{fid}_{i}")
             else: s_final_ki = s_ki_sec
-            
             s_dr = ca3.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"st_dr_{fid}_{i}")
             s_nt = ca4.text_input("Not", value=stg["Not"], key=f"st_nt_{fid}_{i}")
             yeni_asamalar.append({"Aşama Adı": s_ad, "Sorumlu": s_final_ki, "Durum": s_dr, "Not": s_nt})
@@ -189,10 +174,9 @@ if "➕ Yeni Görev" in sekme_sozlugu:
                 }
                 st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([yeni])], ignore_index=True)
                 veriyi_kaydet(st.session_state.data)
-                st.success("Görev başarıyla kaydedildi!")
+                st.success("Kaydedildi!")
                 formu_sifirla()
                 st.rerun()
-            else: st.warning("Lütfen yıldızlı (*) alanları doldurun.")
 
 # ================= TAB 2: LİSTE VE DETAY =================
 with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
@@ -207,65 +191,63 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
             with st.container(border=True):
                 st.markdown(f"### 🎯 {secili['GÖREV ADI']}")
                 as_df = pd.DataFrame(asamalari_coz(secili['AŞAMALAR']))
-                
                 if st.session_state.aktif_rol == "Guest":
-                    st.info(f"**📌 Mevcut Durum:** {secili['DURUM']} | **Sorumlu:** {secili['ANA SORUMLU']}")
-                    st.markdown(f"**💬 Notlar:** {secili['NOTLAR']}")
+                    st.info(f"**Durum:** {secili['DURUM']} | **Not:** {secili['NOTLAR']}")
                     st.dataframe(as_df, use_container_width=True, hide_index=True)
                 else:
                     c1, c2 = st.columns(2)
-                    y_dr = c1.selectbox("Genel Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"], 
-                                       index=["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"].index(secili['DURUM']) if secili['DURUM'] in ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"] else 0, 
-                                       key=f"up_dr_{idx}")
-                    y_nt = c2.text_input("Notlar", value=str(secili['NOTLAR']), key=f"up_nt_{idx}")
-                    
-                    # Düzenlenebilir Alt Aşamalar
+                    y_dr = c1.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"], index=0, key=f"up_dr_{idx}")
+                    y_nt = c2.text_input("Genel Not", value=str(secili['NOTLAR']), key=f"up_nt_{idx}")
                     ed_as = st.data_editor(as_df, num_rows="dynamic", use_container_width=True, key=f"ed_as_{idx}",
-                                          column_config={
-                                              "Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=tum_sorumlular),
-                                              "Durum": st.column_config.SelectboxColumn("Durum", options=["Bekliyor", "Devam Ediyor", "Tamamlandı"])
-                                          })
-                    
+                                          column_config={"Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=tum_sorumlular)})
                     if st.button("💾 Güncelle", use_container_width=True):
                         st.session_state.data.at[idx, 'DURUM'] = y_dr
                         st.session_state.data.at[idx, 'NOTLAR'] = y_nt
                         st.session_state.data.at[idx, 'AŞAMALAR'] = asamalari_paketle(ed_as.to_dict('records'))
                         veriyi_kaydet(st.session_state.data)
-                        st.success("Değişiklikler kaydedildi!")
-                        st.rerun()
+                        st.success("Güncellendi!"); st.rerun()
 
-# ================= TAB 3: RAPOR =================
+# ================= TAB: PROFİL AYARLARI (GÜNCELLENDİ) =================
+with sekme_sozlugu["👤 Profil Ayarları"]:
+    st.subheader("👤 Profil Bilgileri")
+    st.info(f"Kullanıcı: **{st.session_state.aktif_kullanici}** | Yetki: **{st.session_state.aktif_rol}**")
+    
+    with st.container(border=True):
+        st.markdown("#### 🔑 Şifremi Değiştir")
+        e_pwd = st.text_input("Mevcut Şifre", type="password", key="prof_old")
+        n_pwd = st.text_input("Yeni Şifre", type="password", key="prof_new")
+        n_pwd_c = st.text_input("Yeni Şifre (Tekrar)", type="password", key="prof_new_conf")
+        
+        if st.button("💾 Şifreyi Güncelle"):
+            user_idx = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == st.session_state.aktif_kullanici].index[0]
+            gercek_sifre = str(st.session_state.kullanicilar.at[user_idx, 'SIFRE'])
+            
+            if e_pwd != gercek_sifre:
+                st.error("❌ Mevcut şifre hatalı.")
+            elif n_pwd != n_pwd_c:
+                st.error("❌ Yeni şifreler uyuşmuyor.")
+            elif len(n_pwd) < 4:
+                st.warning("⚠️ Şifre en az 4 karakter olmalı.")
+            else:
+                st.session_state.kullanicilar.at[user_idx, 'SIFRE'] = n_pwd
+                kullanici_kaydet(st.session_state.kullanicilar)
+                st.success("✅ Şifreniz güncellendi!"); st.rerun()
+
+# ================= DİĞER SEKMELER (RAPOR, YEDEK, ADMİN) =================
 with sekme_sozlugu["📊 Raporlama"]:
     if not display_df.empty:
         c1, c2 = st.columns(2)
-        c1.plotly_chart(px.pie(display_df, names="DURUM", title="İşlerin Durum Dağılımı", color_discrete_sequence=px.colors.qualitative.Pastel), use_container_width=True)
-        c2.plotly_chart(px.bar(display_df, x="FİRMA", color="DURUM", title="Firma Bazlı İş Yükü"), use_container_width=True)
+        c1.plotly_chart(px.pie(display_df, names="DURUM", title="Durum Dağılımı"), use_container_width=True)
+        c2.plotly_chart(px.bar(display_df, x="FİRMA", color="DURUM", title="Firma İş Yükü"), use_container_width=True)
 
-# ================= TAB 4: YEDEK =================
 if "⚙️ Veri Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["⚙️ Veri Yönetimi"]:
-        st.download_button("📥 Excel/CSV Olarak İndir", display_df.to_csv(index=False).encode('utf-8'), "tsi_is_takip.csv", "text/csv")
+        st.download_button("📥 Verileri İndir", display_df.to_csv(index=False).encode('utf-8'), "yedek.csv", "text/csv")
 
-# ================= TAB 5: PROFİL =================
-with sekme_sozlugu["👤 Profil Ayarları"]:
-    st.subheader("🔑 Şifremi Değiştir")
-    with st.form("pwd_form"):
-        e_pwd = st.text_input("Eski Şifre", type="password")
-        n_pwd = st.text_input("Yeni Şifre", type="password")
-        if st.form_submit_button("Güncelle"):
-            user_idx = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == st.session_state.aktif_kullanici].index[0]
-            if str(st.session_state.kullanicilar.at[user_idx, 'SIFRE']) == e_pwd:
-                st.session_state.kullanicilar.at[user_idx, 'SIFRE'] = n_pwd
-                kullanici_kaydet(st.session_state.kullanicilar)
-                st.success("Şifreniz güncellendi!")
-            else: st.error("Eski şifre yanlış.")
-
-# ================= TAB 6: KULLANICI (ADMİN) =================
 if "👥 Kullanıcı Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["👥 Kullanıcı Yönetimi"]:
-        ed_users = st.data_editor(st.session_state.kullanicilar, num_rows="dynamic", use_container_width=True,
-                                 column_config={"ROL": st.column_config.SelectboxColumn("ROL", options=["Admin", "User", "Guest"])})
-        if st.button("💾 Kullanıcı Listesini Kaydet"):
-            st.session_state.kullanicilar = ed_users
-            kullanici_kaydet(ed_users)
-            st.success("Kullanıcılar güncellendi!")
+        ed_u = st.data_editor(st.session_state.kullanicilar, num_rows="dynamic", use_container_width=True,
+                             column_config={"ROL": st.column_config.SelectboxColumn("ROL", options=["Admin", "User", "Guest"])})
+        if st.button("💾 Kullanıcıları Kaydet"):
+            st.session_state.kullanicilar = ed_u
+            kullanici_kaydet(ed_u); st.success("Kaydedildi!")
