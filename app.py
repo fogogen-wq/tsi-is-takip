@@ -4,6 +4,7 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import os
 import json
+from streamlit_gsheets import GSheetsConnection
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="TSI Yönetim Paneli", layout="wide", page_icon="🚀")
@@ -24,10 +25,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 1. VERİTABANI YÖNETİMİ ---
-DB_FILE = "tsi_is_takip_veritabani.csv"
 USER_DB = "kullanicilar.csv"
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Kullanıcı Veritabanı
+# Kullanıcı Veritabanı (Yerel)
 def kullanici_yukle():
     if os.path.exists(USER_DB):
         return pd.read_csv(USER_DB)
@@ -45,18 +46,19 @@ def kullanici_yukle():
 def kullanici_kaydet(df):
     df.to_csv(USER_DB, index=False)
 
-# Görev Veritabanı
+# Görev Veritabanı (Google Sheets)
 def veriyi_yukle():
-    if os.path.exists(DB_FILE):
-        return pd.read_csv(DB_FILE)
-    else:
-        columns = ['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BAŞLANGIÇ', 'BİTİŞ', 'DURUM', 'ÖNCELİK', 'NOTLAR', 'AŞAMALAR', 'KAYIT_TARIHI']
-        df = pd.DataFrame(columns=columns)
-        df.to_csv(DB_FILE, index=False)
+    try:
+        df = conn.read(ttl=0)
+        if 'BAŞLANGIÇ' in df.columns:
+            df['BAŞLANGIÇ'] = pd.to_datetime(df['BAŞLANGIÇ']).dt.strftime('%Y-%m-%d')
         return df
+    except:
+        columns = ['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BAŞLANGIÇ', 'BİTİŞ', 'DURUM', 'ÖNCELİK', 'NOTLAR', 'AŞAMALAR', 'KAYIT_TARIHI']
+        return pd.DataFrame(columns=columns)
 
 def veriyi_kaydet(df):
-    df.to_csv(DB_FILE, index=False)
+    conn.update(data=df)
 
 # Session State Atamaları
 if 'kullanicilar' not in st.session_state: st.session_state.kullanicilar = kullanici_yukle()
@@ -64,6 +66,7 @@ if 'data' not in st.session_state: st.session_state.data = veriyi_yukle()
 
 def asamalari_coz(asama_metni):
     try:
+        if pd.isna(asama_metni) or asama_metni == "": return []
         asamalar = json.loads(str(asama_metni))
         if isinstance(asamalar, list): return asamalar
     except:
@@ -191,26 +194,25 @@ with tab_ekle:
             st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([yeni])], ignore_index=True)
             veriyi_kaydet(st.session_state.data)
             formu_sifirla()
-            st.success("Görev başarıyla eklendi!")
+            st.success("Görev Google Sheets'e başarıyla eklendi!")
             st.rerun()
         else:
             st.error("Lütfen yıldızlı (*) tüm zorunlu alanları doldurduğunuzdan emin olun!")
 
 
-# ================= TAB 2: LİSTE VE DETAY PANELİ (GÜNCELLENDİ) =================
+# ================= TAB 2: LİSTE VE DETAY PANELİ (TIKLANABİLİR) =================
 with tab_liste:
     st.subheader("📋 Ana Görevler Tablosu")
     st.caption("Detaylarını görmek veya düzenlemek istediğiniz görevin üzerine tıklayın.")
     
     if not display_df.empty:
-        gosterilecek_df = display_df.drop(columns=['AŞAMALAR', 'KAYIT_TARIHI'])
+        gosterilecek_df = display_df.drop(columns=['AŞAMALAR', 'KAYIT_TARIHI'], errors='ignore')
         
-        # Checkbox yerine Tıklanabilir Seçim (on_select="rerun") eklendi
-    selection = st.dataframe(
+        selection = st.dataframe(
             gosterilecek_df,
             use_container_width=True,
             height=350,
-            selection_mode="single-row", # <-- DÜZELDİ (Tire kullanıldı)
+            selection_mode="single-row",
             on_select="rerun",
             key="ana_tablo_secim"
         )
@@ -244,14 +246,13 @@ with tab_liste:
                     }
                 )
                 
-                # Değişiklikleri Kaydet Butonu (Kontrollü kayıt)
                 if st.button("💾 Seçili Görevin Değişikliklerini Kaydet", use_container_width=True):
                     st.session_state.data.at[idx_label, 'DURUM'] = yeni_ana_durum
                     st.session_state.data.at[idx_label, 'NOTLAR'] = yeni_ana_not
                     st.session_state.data.at[idx_label, 'AŞAMALAR'] = asamalari_paketle(duz_asama_df.to_dict('records'))
                     
                     veriyi_kaydet(st.session_state.data)
-                    st.success("Detaylar başarıyla güncellendi! 💾")
+                    st.success("Detaylar Google Sheets'e başarıyla kaydedildi! 💾")
                     st.rerun() 
         else:
             st.info("💡 Alt aşamaları görüntülemek ve düzenlemek için yukarıdaki listeden bir satıra tıklayın.")
