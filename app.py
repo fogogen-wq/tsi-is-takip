@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 import json
 from streamlit_gsheets import GSheetsConnection
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="TSI Yönetim Paneli", layout="wide", page_icon="🚀")
+# --- SAYFA AYARLARI (GÜNCELLENDİ) ---
+st.set_page_config(page_title="Zilan Takipte", layout="wide", page_icon="🚀")
 
 # --- MODERN UI CSS ---
 st.markdown("""
@@ -146,10 +146,7 @@ if "➕ Yeni Görev" in sekme_sozlugu:
         v_basla = c1.date_input("Başlangıç", datetime.now(), key=f"frm_basla_{fid}")
         v_bitis = c2.date_input("Bitiş", datetime.now() + timedelta(days=7), key=f"frm_bit_{fid}")
         v_oncelik = c1.selectbox("Öncelik", ["Düşük", "Orta", "Yüksek"], key=f"frm_on_{fid}")
-        
-        # GÜNCELLEME: Ana Durum listesine Gecikti ve İptal eklendi
         v_durum = c2.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"], key=f"frm_dr_{fid}")
-        
         v_not = st.text_area("📌 Notlar", key=f"frm_not_{fid}")
 
         st.subheader("🛠 Alt Aşamalar")
@@ -160,10 +157,7 @@ if "➕ Yeni Görev" in sekme_sozlugu:
             s_ki_sec = ca2.selectbox("Sorumlu", ["Aynı", "➕ YENİ EKLE..."] + liste_sorumlular, key=f"st_ki_sec_{fid}_{i}")
             s_final_ki = (v_sorumlu if s_ki_sec == "Aynı" else (ca2.text_input("Yeni Sorumlu", key=f"st_ki_y_{fid}_{i}") if s_ki_sec == "➕ YENİ EKLE..." else s_ki_sec))
             s_bit = ca3.date_input("Bitiş", datetime.now() + timedelta(days=7), key=f"st_bit_{fid}_{i}")
-            
-            # GÜNCELLEME: Alt Aşama Durum listesine Gecikti ve İptal eklendi
             s_dr = ca4.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"], key=f"st_dr_{fid}_{i}")
-            
             s_nt = ca5.text_input("Aşama Notu", value=stg.get("Not", ""), key=f"st_nt_{fid}_{i}")
             
             yeni_asamalar.append({
@@ -240,7 +234,7 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                         column_config={
                             "Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=liste_sorumlular),
                             "Bitiş Tarihi": st.column_config.DateColumn("Bitiş Tarihi", format="YYYY-MM-DD"),
-                            "Durum": st.column_config.SelectboxColumn("Durum", options=durumlar) # Detaylar tablosundaki durumlar da güncellendi
+                            "Durum": st.column_config.SelectboxColumn("Durum", options=durumlar)
                         }
                     )
                     
