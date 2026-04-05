@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import json
 from streamlit_gsheets import GSheetsConnection
 
-# --- SAYFA AYARLARI (GÜNCELLENDİ) ---
+# --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Zilan Takipte", layout="wide", page_icon="🚀")
 
 # --- MODERN UI CSS ---
@@ -83,7 +83,7 @@ if not st.session_state.giris_basarili:
         else: st.sidebar.error("Hatalı Giriş veya Şifre!")
     st.stop()
 
-# --- 4. SIDEBAR VE GELİŞMİŞ FİLTRELER ---
+# --- 4. SIDEBAR VE FİLTRELER ---
 st.sidebar.success(f"Hoş geldin, {st.session_state.aktif_kullanici}!")
 if st.sidebar.button("🚪 Çıkış Yap"):
     st.session_state.giris_basarili = False; st.rerun()
@@ -101,7 +101,6 @@ display_df = st.session_state.data.copy()
 
 f_firma = st.sidebar.multiselect("🏢 Firma", liste_firmalar)
 f_sorumlu = st.sidebar.multiselect("👤 Sorumlu", liste_sorumlular)
-f_durum = st.sidebar.multiselect("📌 Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"])
 f_oncelik = st.sidebar.multiselect("⚡ Öncelik", ["Yüksek", "Orta", "Düşük"])
 
 st.sidebar.markdown("**📅 Bitiş Tarihine Göre**")
@@ -113,7 +112,6 @@ if tarih_aktif:
 
 if f_firma: display_df = display_df[display_df['FİRMA'].isin(f_firma)]
 if f_sorumlu: display_df = display_df[display_df['ANA SORUMLU'].isin(f_sorumlu)]
-if f_durum: display_df = display_df[display_df['DURUM'].isin(f_durum)]
 if f_oncelik: display_df = display_df[display_df['ÖNCELİK'].isin(f_oncelik)]
 
 if tarih_aktif:
@@ -159,14 +157,7 @@ if "➕ Yeni Görev" in sekme_sozlugu:
             s_bit = ca3.date_input("Bitiş", datetime.now() + timedelta(days=7), key=f"st_bit_{fid}_{i}")
             s_dr = ca4.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"], key=f"st_dr_{fid}_{i}")
             s_nt = ca5.text_input("Aşama Notu", value=stg.get("Not", ""), key=f"st_nt_{fid}_{i}")
-            
-            yeni_asamalar.append({
-                "Aşama Adı": s_ad, 
-                "Sorumlu": s_final_ki, 
-                "Bitiş Tarihi": s_bit.strftime('%Y-%m-%d'), 
-                "Durum": s_dr, 
-                "Not": s_nt
-            })
+            yeni_asamalar.append({"Aşama Adı": s_ad, "Sorumlu": s_final_ki, "Bitiş Tarihi": s_bit.strftime('%Y-%m-%d'), "Durum": s_dr, "Not": s_nt})
 
         if st.button("➕ Aşama Ekle"):
             st.session_state.temp_stages.append({"Aşama Adı": "", "Sorumlu": "Aynı", "Bitiş Tarihi": "", "Durum": "Bekliyor", "Not": ""})
@@ -194,227 +185,122 @@ if "➕ Yeni Görev" in sekme_sozlugu:
 # ================= TAB: İŞ LİSTESİ VE DETAYLAR =================
 with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
     if not display_df.empty:
-        gosterilecek = display_df.drop(columns=['AŞAMALAR', 'KAYIT_TARIHI'], errors='ignore')
-        sel = st.dataframe(gosterilecek, use_container_width=True, height=350, selection_mode="single-row", on_select="rerun", key="tablo")
-        rows = sel.get("selection", {}).get("rows", [])
+        gorunum = st.radio("Görünüm Seçimi", ["🚀 Aktif Görevler", "🗄️ Arşiv (Tamamlanan & İptal)"], horizontal=True)
+        st.divider()
         
-        if rows and len(rows) > 0 and rows[0] < len(gosterilecek):
-            idx = gosterilecek.index[rows[0]]
-            secili = st.session_state.data.loc[idx]
-            with st.container(border=True):
-                st.markdown(f"### 🎯 {secili['GÖREV ADI']}")
-                firma_info = st.session_state.firmalar_db[st.session_state.firmalar_db['FİRMA_ADI'] == secili['FİRMA']]
-                if not firma_info.empty and str(firma_info.iloc[0]['YETKİLİ_KİŞİ']).strip() != "":
-                    st.caption(f"📞 Yetkili: {firma_info.iloc[0]['YETKİLİ_KİŞİ']} | 📧 {firma_info.iloc[0]['EMAIL']}")
-                
-                c1, c2 = st.columns(2)
-                durumlar = ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"]
-                mevcut_durum_index = durumlar.index(secili['DURUM']) if secili['DURUM'] in durumlar else 0
-                
-                as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
-                df_as = pd.DataFrame(as_list)
-                
-                if df_as.empty:
-                    df_as = pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Bitiş Tarihi", "Durum", "Not"])
-                elif "Bitiş Tarihi" not in df_as.columns:
-                    df_as["Bitiş Tarihi"] = None
-                
-                if st.session_state.aktif_rol == "Guest":
-                    st.info(f"**Durum:** {secili['DURUM']} | **Not:** {secili['NOTLAR']}")
-                    st.dataframe(df_as, use_container_width=True, hide_index=True)
-                else:
-                    y_dr = c1.selectbox("Durum", durumlar, index=mevcut_durum_index, key=f"up_dr_{idx}")
-                    y_nt = c2.text_input("Not", value=str(secili['NOTLAR']) if pd.notna(secili['NOTLAR']) else "", key=f"up_nt_{idx}")
-                    
-                    ed_as = st.data_editor(
-                        df_as, 
-                        num_rows="dynamic", 
-                        use_container_width=True, 
-                        key=f"ed_as_{idx}", 
-                        column_config={
-                            "Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=liste_sorumlular),
-                            "Bitiş Tarihi": st.column_config.DateColumn("Bitiş Tarihi", format="YYYY-MM-DD"),
-                            "Durum": st.column_config.SelectboxColumn("Durum", options=durumlar)
-                        }
-                    )
-                    
-                    if st.button("💾 Güncelle", use_container_width=True):
-                        ed_as['Bitiş Tarihi'] = pd.to_datetime(ed_as['Bitiş Tarihi'], errors='coerce').dt.strftime('%Y-%m-%d').fillna("")
-                        st.session_state.data.at[idx, 'DURUM'] = y_dr
-                        st.session_state.data.at[idx, 'NOTLAR'] = y_nt
-                        st.session_state.data.at[idx, 'AŞAMALAR'] = json.dumps(ed_as.to_dict('records'), ensure_ascii=False)
-                        tablo_kaydet(st.session_state.data, "Sayfa1")
-                        st.success("Güncellendi!"); st.rerun()
+        if gorunum == "🚀 Aktif Görevler":
+            tablo_df = display_df[~display_df['DURUM'].isin(['Tamamlandı', 'İptal'])]
+        else:
+            tablo_df = display_df[display_df['DURUM'].isin(['Tamamlandı', 'İptal'])]
 
-# ================= TAB: GELİŞMİŞ RAPORLAMA =================
+        if not tablo_df.empty:
+            gosterilecek = tablo_df.drop(columns=['AŞAMALAR', 'KAYIT_TARIHI'], errors='ignore')
+            sel = st.dataframe(gosterilecek, use_container_width=True, height=350, selection_mode="single-row", on_select="rerun", key="tablo")
+            rows = sel.get("selection", {}).get("rows", [])
+            
+            if rows and len(rows) > 0 and rows[0] < len(gosterilecek):
+                idx = gosterilecek.index[rows[0]]
+                secili = st.session_state.data.loc[idx]
+                
+                with st.container(border=True):
+                    st.markdown(f"### 🎯 {secili['GÖREV ADI']}")
+                    firma_info = st.session_state.firmalar_db[st.session_state.firmalar_db['FİRMA_ADI'] == secili['FİRMA']]
+                    if not firma_info.empty and str(firma_info.iloc[0]['YETKİLİ_KİŞİ']).strip() != "":
+                        st.caption(f"📞 Yetkili: {firma_info.iloc[0]['YETKİLİ_KİŞİ']} | 📧 {firma_info.iloc[0]['EMAIL']}")
+                    
+                    c1, c2 = st.columns(2)
+                    durumlar = ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"]
+                    mevcut_durum_index = durumlar.index(secili['DURUM']) if secili['DURUM'] in durumlar else 0
+                    
+                    if st.session_state.aktif_rol == "Guest":
+                        st.info(f"**Durum:** {secili['DURUM']} | **Not:** {secili['NOTLAR']}")
+                        as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
+                        st.dataframe(pd.DataFrame(as_list), use_container_width=True, hide_index=True)
+                    else:
+                        y_dr = c1.selectbox("Durum", durumlar, index=mevcut_durum_index, key=f"up_dr_{idx}")
+                        y_nt = c2.text_input("Not", value=str(secili['NOTLAR']) if pd.notna(secili['NOTLAR']) else "", key=f"up_nt_{idx}")
+                        
+                        as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
+                        df_as = pd.DataFrame(as_list)
+                        if df_as.empty: df_as = pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Bitiş Tarihi", "Durum", "Not"])
+                        elif "Bitiş Tarihi" not in df_as.columns: df_as["Bitiş Tarihi"] = None
+                        
+                        ed_as = st.data_editor(df_as, num_rows="dynamic", use_container_width=True, key=f"ed_as_{idx}", column_config={"Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=liste_sorumlular), "Bitiş Tarihi": st.column_config.DateColumn("Bitiş Tarihi", format="YYYY-MM-DD"), "Durum": st.column_config.SelectboxColumn("Durum", options=durumlar)})
+                        
+                        st.divider()
+                        bc1, bc2 = st.columns(2)
+                        with bc1:
+                            if st.button("💾 Değişiklikleri Kaydet", use_container_width=True):
+                                ed_as['Bitiş Tarihi'] = pd.to_datetime(ed_as['Bitiş Tarihi'], errors='coerce').dt.strftime('%Y-%m-%d').fillna("")
+                                st.session_state.data.at[idx, 'DURUM'] = y_dr
+                                st.session_state.data.at[idx, 'NOTLAR'] = y_nt
+                                st.session_state.data.at[idx, 'AŞAMALAR'] = json.dumps(ed_as.to_dict('records'), ensure_ascii=False)
+                                tablo_kaydet(st.session_state.data, "Sayfa1")
+                                st.success("Görev güncellendi!"); st.rerun()
+                                
+                        with bc2:
+                            # PROFESYONEL ÖNERİ: "Sil" yerine "Listeden Kaldır"
+                            if st.button("🚫 Görevi Listeden Kaldır", type="primary", use_container_width=True):
+                                st.session_state.data = st.session_state.data.drop(idx).reset_index(drop=True)
+                                tablo_kaydet(st.session_state.data, "Sayfa1")
+                                st.success("Görev veritabanından kaldırıldı!"); st.rerun()
+        else:
+            st.info("Bu listede gösterilecek bir görev bulunmuyor.")
+
+# ================= TAB: DİĞER SEKMELER (SABİT) =================
 with sekme_sozlugu["📊 Raporlama"]:
-    st.subheader("📊 Gelişmiş İş ve Performans Raporları")
+    st.subheader("📊 Gelişmiş Raporlama")
     if not display_df.empty:
         df_rapor = display_df.copy()
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Gösterilen Görev", len(df_rapor))
-        m2.metric("Tamamlanan ✅", len(df_rapor[df_rapor['DURUM'] == 'Tamamlandı']))
-        m3.metric("Devam Eden ⏳", len(df_rapor[df_rapor['DURUM'] == 'Devam Ediyor']))
-        m4.metric("Geciken/İptal ⚠️", len(df_rapor[df_rapor['DURUM'].isin(['Gecikti', 'İptal'])]))
-        st.divider()
-        c1, c2 = st.columns(2)
-        with c1:
-            st.plotly_chart(px.histogram(df_rapor, y="FİRMA", color="DURUM", barmode="group", title="🏢 Firmalara Göre İş Yükü", orientation='h'), use_container_width=True)
-            if "ÖNCELİK" in df_rapor.columns and not df_rapor['ÖNCELİK'].replace("", pd.NA).dropna().empty:
-                st.plotly_chart(px.pie(df_rapor, names="ÖNCELİK", title="⚡ Aciliyet Dağılımı", hole=0.3, color="ÖNCELİK", color_discrete_map={"Yüksek": "#EF553B", "Orta": "#FECB52", "Düşük": "#00CC96"}), use_container_width=True)
-        with c2:
-            if "ANA SORUMLU" in df_rapor.columns and not df_rapor['ANA SORUMLU'].replace("", pd.NA).dropna().empty:
-                fig_sorumlu = px.pie(df_rapor, names="ANA SORUMLU", hole=0.4, title="👤 Personel İş Dağılımı")
-                fig_sorumlu.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig_sorumlu, use_container_width=True)
-            st.plotly_chart(px.pie(df_rapor, names="DURUM", title="📌 Genel İş Durumu"), use_container_width=True)
-        st.divider()
-        st.markdown("#### ⏳ Yaklaşan ve Acil Görevler")
-        try:
-            df_yaklasan = df_rapor[df_rapor['DURUM'].isin(['Bekliyor', 'Devam Ediyor'])].copy()
-            df_yaklasan['BİTİŞ'] = pd.to_datetime(df_yaklasan['BİTİŞ'], errors='coerce')
-            df_yaklasan = df_yaklasan.dropna(subset=['BİTİŞ']).sort_values(by='BİTİŞ')
-            if not df_yaklasan.empty:
-                df_yaklasan['BİTİŞ'] = df_yaklasan['BİTİŞ'].dt.strftime('%Y-%m-%d')
-                st.dataframe(df_yaklasan[['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BİTİŞ', 'ÖNCELİK']], use_container_width=True, hide_index=True)
-            else: st.success("Beklemede olan acil görev bulunmuyor!")
-        except: st.info("Tarih sıralamasında bir hata oluştu.")
+        m1, m2, m3, m4 = st.columns(4); m1.metric("Toplam Görev", len(df_rapor)); m2.metric("Tamamlanan ✅", len(df_rapor[df_rapor['DURUM'] == 'Tamamlandı'])); m3.metric("Devam Eden ⏳", len(df_rapor[df_rapor['DURUM'] == 'Devam Ediyor'])); m4.metric("Kritik ⚠️", len(df_rapor[df_rapor['DURUM'].isin(['Gecikti', 'İptal'])]))
+        st.divider(); c1, c2 = st.columns(2)
+        with c1: st.plotly_chart(px.histogram(df_rapor, y="FİRMA", color="DURUM", barmode="group", title="Firma İş Yükü", orientation='h'), use_container_width=True)
+        with c2: st.plotly_chart(px.pie(df_rapor, names="DURUM", title="Genel Durum Dağılımı"), use_container_width=True)
 
-# ================= TAB: FİRMA YÖNETİMİ =================
 if "🏢 Firma Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["🏢 Firma Yönetimi"]:
-        st.subheader("🏢 Firma ve Rehber Yönetimi")
+        st.subheader("🏢 Firma ve Rehber")
         st.session_state.firmalar_db = st.session_state.firmalar_db.fillna("").astype(str)
-        ed_firmalar = st.data_editor(
-            st.session_state.firmalar_db, 
-            num_rows="dynamic", 
-            use_container_width=True, 
-            key="crm_editor",
-            column_config={
-                "FİRMA_ADI": st.column_config.TextColumn("Firma Adı *", required=True), 
-                "EMAIL": st.column_config.TextColumn("E-Posta")
-            }
-        )
-        if st.button("💾 Firma Bilgilerini Kaydet"):
-            st.session_state.firmalar_db = ed_firmalar.fillna("").astype(str)
-            tablo_kaydet(st.session_state.firmalar_db, "Firmalar")
-            st.success("Rehber güncellendi!"); st.rerun()
+        ed_f = st.data_editor(st.session_state.firmalar_db, num_rows="dynamic", use_container_width=True, key="crm_ed", column_config={"FİRMA_ADI": st.column_config.TextColumn("Firma Adı", required=True)})
+        if st.button("💾 Rehberi Kaydet"):
+            st.session_state.firmalar_db = ed_f.fillna("").astype(str); tablo_kaydet(ed_f, "Firmalar"); st.success("Rehber güncellendi!"); st.rerun()
 
-# ================= TAB: TOPLANTI VE NOTLAR =================
 if "📝 Toplantı & Notlar" in sekme_sozlugu:
     with sekme_sozlugu["📝 Toplantı & Notlar"]:
         st.subheader("📝 Toplantı Notları")
         with st.container(border=True):
-            fid = st.session_state.form_id
-            col1, col2 = st.columns(2)
-            t_tarih = col1.date_input("Toplantı Tarihi", datetime.now(), key=f"top_tarih_{fid}")
-            t_konu = col1.text_input("Toplantı Konusu / Başlık *", key=f"top_konu_{fid}")
-            t_firma = col2.selectbox("İlgili Firma", ["Seçiniz (Bağımsız Not)"] + liste_firmalar, key=f"top_firma_{fid}")
-            t_kisi = col2.text_input("Katılımcılar", placeholder="Örn: Zilan, Uğur...", key=f"top_kisi_{fid}")
-            t_notlar = st.text_area("Toplantı Notları", height=100, key=f"top_not_{fid}")
+            fid = st.session_state.form_id; col1, col2 = st.columns(2)
+            t_konu = col1.text_input("Konu *", key=f"top_k_{fid}"); t_firma = col2.selectbox("Firma", ["Seçiniz"] + liste_firmalar, key=f"top_f_{fid}")
+            t_notlar = st.text_area("Notlar", key=f"top_n_{fid}")
             if st.button("💾 Notu Kaydet", use_container_width=True):
                 if t_konu:
-                    yeni_not = {"TARİH": t_tarih.strftime('%Y-%m-%d'), "KONU": t_konu, "İLGİLİ_FİRMA": "" if t_firma == "Seçiniz (Bağımsız Not)" else t_firma, "KATILIMCILAR": t_kisi, "NOTLAR": t_notlar}
-                    st.session_state.toplanti_db = pd.concat([st.session_state.toplanti_db, pd.DataFrame([yeni_not])], ignore_index=True)
-                    tablo_kaydet(st.session_state.toplanti_db, "Toplantı_Notları"); st.success("Kaydedildi!"); formu_sifirla(); st.rerun()
-                else: st.error("Lütfen Toplantı Konusu girin.")
-        
-        st.markdown("### 📚 Arşiv")
-        if not st.session_state.toplanti_db.empty:
-            ed_notlar = st.data_editor(st.session_state.toplanti_db.sort_values(by="TARİH", ascending=False), use_container_width=True, num_rows="dynamic", key="toplanti_editor")
-            if st.button("💾 Arşivi Kaydet"):
-                st.session_state.toplanti_db = ed_notlar
-                tablo_kaydet(ed_notlar, "Toplantı_Notları"); st.success("Arşiv güncellendi!"); st.rerun()
+                    y_not = {"TARİH": datetime.now().strftime('%Y-%m-%d'), "KONU": t_konu, "İLGİLİ_FİRMA": t_firma, "NOTLAR": t_notlar}
+                    st.session_state.toplanti_db = pd.concat([st.session_state.toplanti_db, pd.DataFrame([y_not])], ignore_index=True)
+                    tablo_kaydet(st.session_state.toplanti_db, "Toplantı_Notları"); st.success("Not kaydedildi!"); formu_sifirla(); st.rerun()
 
-# ================= TAB: YAPILACAKLAR =================
 if "✅ Yapılacaklar" in sekme_sozlugu:
     with sekme_sozlugu["✅ Yapılacaklar"]:
-        st.subheader("✅ Akıllı Yapılacaklar Ajandası (To-Do)")
-        st.caption(f"Hoş geldin {st.session_state.aktif_kullanici}! İşlerini önceliklendir, tarih ver ve ilerlemeni takip et.")
-        
-        kullanici_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] == st.session_state.aktif_kullanici].copy()
-        kullanici_todos['BİTİŞ_TARİHİ'] = pd.to_datetime(kullanici_todos['BİTİŞ_TARİHİ'], errors='coerce')
-        kullanici_todos['TAMAMLANDI'] = kullanici_todos['TAMAMLANDI'].astype(str).str.upper().isin(['TRUE', '1', 'TRUE.0'])
-        
-        toplam_is = len(kullanici_todos)
-        biten_is = len(kullanici_todos[kullanici_todos['TAMAMLANDI'] == True])
-        
-        if toplam_is > 0:
-            tamamlanma_orani = int((biten_is / toplam_is) * 100)
-            st.progress(tamamlanma_orani, text=f"Günlük İlerleme: %{tamamlanma_orani} ({biten_is} / {toplam_is} Görev Tamamlandı)")
-        else:
-            st.info("Harika! Şimdilik yapılacak işin görünmüyor. Yeni bir görev ekleyebilirsin.")
-        
-        kullanici_todos = kullanici_todos.sort_values(by=['TAMAMLANDI'])
-        
-        ed_todos = st.data_editor(
-            kullanici_todos, num_rows="dynamic", use_container_width=True, hide_index=True, key="todo_editor_modern",
-            column_config={
-                "TAMAMLANDI": st.column_config.CheckboxColumn("✅ Bitti", default=False, width="small"),
-                "YAPILACAK_IS": st.column_config.TextColumn("📝 Ne Yapılacak?", required=True, width="large"),
-                "ÖNCELİK": st.column_config.SelectboxColumn("⚡ Öncelik", options=["🔴 Yüksek", "🟡 Orta", "🟢 Düşük"], width="medium"),
-                "BİTİŞ_TARİHİ": st.column_config.DateColumn("📅 Bitiş Tarihi", format="YYYY-MM-DD", width="medium"),
-                "KULLANICI": None 
-            }
-        )
-        
-        if st.button("💾 Değişiklikleri Kaydet", use_container_width=True):
-            ed_todos['KULLANICI'] = st.session_state.aktif_kullanici
-            ed_todos['BİTİŞ_TARİHİ'] = pd.to_datetime(ed_todos['BİTİŞ_TARİHİ'], errors='coerce').dt.strftime('%Y-%m-%d').fillna("")
-            ed_todos['TAMAMLANDI'] = ed_todos['TAMAMLANDI'].astype(str)
-            diger_kullanicilar_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] != st.session_state.aktif_kullanici]
-            st.session_state.todo_db = pd.concat([diger_kullanicilar_todos, ed_todos], ignore_index=True)
-            tablo_kaydet(st.session_state.todo_db, "Yapilacaklar")
-            st.success("Kişisel listeniz başarıyla güncellendi!"); st.rerun()
+        st.subheader("✅ Ajanda (To-Do)")
+        kt = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] == st.session_state.aktif_kullanici].copy()
+        kt['TAMAMLANDI'] = kt['TAMAMLANDI'].astype(str).str.upper().isin(['TRUE', '1', 'TRUE.0'])
+        ed_t = st.data_editor(kt, num_rows="dynamic", use_container_width=True, hide_index=True, key="todo_ed", column_config={"TAMAMLANDI": st.column_config.CheckboxColumn("Bitti"), "KULLANICI": None})
+        if st.button("💾 Listeyi Güncelle"):
+            ed_t['KULLANICI'] = st.session_state.aktif_kullanici; st.session_state.todo_db = pd.concat([st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] != st.session_state.aktif_kullanici], ed_t], ignore_index=True)
+            tablo_kaydet(st.session_state.todo_db, "Yapilacaklar"); st.success("Liste kaydedildi!"); st.rerun()
 
-# ================= TAB: VERİ YÖNETİMİ =================
 if "⚙️ Veri Yönetimi" in sekme_sozlugu:
-    with sekme_sozlugu["⚙️ Veri Yönetimi"]:
-        st.download_button("📥 İş Listesini İndir", display_df.to_csv(index=False).encode('utf-8-sig'), "tsi_is_takibi.csv", "text/csv")
+    with sekme_sozlugu["⚙️ Veri Yönetimi"]: st.download_button("📥 Excel Olarak İndir", display_df.to_csv(index=False).encode('utf-8-sig'), "is_listesi.csv", "text/csv")
 
-# ================= TAB: PROFİL AYARLARI =================
 with sekme_sozlugu["👤 Profil Ayarları"]:
-    st.subheader("👤 Profil ve Şifre Yönetimi")
-    with st.container(border=True):
-        e_pwd = st.text_input("Mevcut Şifre", type="password", key="p_old")
-        n_pwd = st.text_input("Yeni Şifre", type="password", key="p_new")
-        n_pwd_c = st.text_input("Yeni Şifre (Tekrar)", type="password", key="p_conf")
-        if st.button("💾 Şifreyi Güncelle"):
-            u_idx = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == st.session_state.aktif_kullanici].index[0]
-            if str(st.session_state.kullanicilar.at[u_idx, 'SIFRE']) == e_pwd and n_pwd == n_pwd_c and len(n_pwd) >= 4:
-                st.session_state.kullanicilar.at[u_idx, 'SIFRE'] = n_pwd
-                tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar"); st.success("✅ Güncellendi!"); st.rerun()
-            else: st.error("❌ Hata!")
+    st.subheader("👤 Şifre Değiştir")
+    e_p = st.text_input("Eski Şifre", type="password"); n_p = st.text_input("Yeni Şifre", type="password")
+    if st.button("💾 Şifreyi Güncelle"):
+        idx = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == st.session_state.aktif_kullanici].index[0]
+        if str(st.session_state.kullanicilar.at[idx, 'SIFRE']) == e_p:
+            st.session_state.kullanicilar.at[idx, 'SIFRE'] = n_p; tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar"); st.success("Şifre güncellendi!"); st.rerun()
 
-# ================= TAB: KULLANICI YÖNETİMİ =================
 if "👥 Kullanıcı Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["👥 Kullanıcı Yönetimi"]:
-        st.subheader("👥 Kullanıcı ve Erişim Yönetimi")
-        st.info("🔒 Güvenlik gereği şifreler tabloda gizlenmiştir. Listeye yeni eklediğiniz kullanıcıların şifresi otomatik olarak **'1234'** belirlenir. Aşağıdaki alandan şifreleri güvenle değiştirebilirsiniz.")
-        
-        ed_u = st.data_editor(
-            st.session_state.kullanicilar, num_rows="dynamic", use_container_width=True, 
-            column_config={"KULLANICI_ADI": st.column_config.TextColumn("Kullanıcı Adı", required=True), "SIFRE": None, "ROL": st.column_config.SelectboxColumn("Yetki Rolü", options=["Admin", "User", "Guest"]), "EMAIL": st.column_config.TextColumn("E-Posta Adresi")}
-        )
-        
+        ed_u = st.data_editor(st.session_state.kullanicilar, num_rows="dynamic", use_container_width=True, column_config={"SIFRE": None})
         if st.button("💾 Kullanıcıları Kaydet"):
-            ed_u['SIFRE'] = ed_u['SIFRE'].fillna("1234").replace("", "1234")
-            st.session_state.kullanicilar = ed_u
-            tablo_kaydet(ed_u, "Kullanıcılar")
-            st.success("Kullanıcılar başarıyla kaydedildi!"); st.rerun()
-            
-        st.divider()
-        st.markdown("#### 🔑 Güvenli Şifre Sıfırlama")
-        c1, c2 = st.columns(2)
-        kullanici_isimleri = ed_u['KULLANICI_ADI'].dropna().unique().tolist()
-        secilen_k = c1.selectbox("Şifresi Değişecek Kullanıcı", ["Seçiniz..."] + kullanici_isimleri)
-        yeni_s = c2.text_input("Yeni Şifre Belirle", type="password")
-        
-        if st.button("🔄 Seçili Kullanıcının Şifresini Sıfırla"):
-            if secilen_k != "Seçiniz..." and len(yeni_s) >= 4:
-                idx = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == secilen_k].index[0]
-                st.session_state.kullanicilar.at[idx, 'SIFRE'] = yeni_s
-                tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar")
-                st.success(f"✅ '{secilen_k}' adlı kullanıcının şifresi başarıyla güncellendi!")
-            else:
-                st.error("Lütfen bir kullanıcı seçin ve en az 4 haneli bir şifre girin.")
+            ed_u['SIFRE'] = ed_u['SIFRE'].fillna("1234").replace("", "1234"); tablo_kaydet(ed_u, "Kullanıcılar"); st.success("Kullanıcılar kaydedildi!"); st.rerun()
