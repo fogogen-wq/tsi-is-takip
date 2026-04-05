@@ -206,7 +206,7 @@ with tab_liste:
         gosterilecek_df = display_df.drop(columns=['AŞAMALAR', 'KAYIT_TARIHI'])
         
         # Checkbox yerine Tıklanabilir Seçim (on_select="rerun") eklendi
-      selection = st.dataframe(
+    selection = st.dataframe(
             gosterilecek_df,
             use_container_width=True,
             height=350,
