@@ -52,8 +52,9 @@ def tablo_kaydet(df, sheet_name):
     conn.update(spreadsheet=URL, worksheet=sheet_name, data=df.fillna(""))
 
 # --- 2. SESSION STATE (BELLEK) ---
+# YENİ EKLENTİ: Kullanıcılar tablosuna "EMAIL" sütunu eklendi
 if 'kullanicilar' not in st.session_state: 
-    st.session_state.kullanicilar = tablo_yukle("Kullanıcılar", ["KULLANICI_ADI", "SIFRE", "ROL"])
+    st.session_state.kullanicilar = tablo_yukle("Kullanıcılar", ["KULLANICI_ADI", "SIFRE", "ROL", "EMAIL"])
 if 'firmalar_db' not in st.session_state: 
     st.session_state.firmalar_db = tablo_yukle("Firmalar", ["FİRMA_ADI", "YETKİLİ_KİŞİ", "EMAIL", "TITLE", "NOTLAR"])
 if 'data' not in st.session_state: 
@@ -227,7 +228,6 @@ with sekme_sozlugu["📊 Raporlama"]:
     if not display_df.empty:
         df_rapor = display_df.copy()
         
-        # 1. SATIR: KPI KARTLARI
         st.markdown("#### 🎯 Seçili Filtrelere Göre Özet")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Gösterilen Görev", len(df_rapor))
@@ -237,50 +237,36 @@ with sekme_sozlugu["📊 Raporlama"]:
         
         st.divider()
         
-        # 2. SATIR: GRAFİKLER
         c1, c2 = st.columns(2)
         with c1:
-            # Firma Analizi (Yatay Bar)
-            fig_firma = px.histogram(df_rapor, y="FİRMA", color="DURUM", barmode="group", 
-                                     title="🏢 Firmalara Göre İş Yükü Dağılımı", orientation='h')
+            fig_firma = px.histogram(df_rapor, y="FİRMA", color="DURUM", barmode="group", title="🏢 Firmalara Göre İş Yükü Dağılımı", orientation='h')
             st.plotly_chart(fig_firma, use_container_width=True)
             
-            # Öncelik Dağılımı (Pie)
             renk_haritasi = {"Yüksek": "#EF553B", "Orta": "#FECB52", "Düşük": "#00CC96"}
             if "ÖNCELİK" in df_rapor.columns and not df_rapor['ÖNCELİK'].replace("", pd.NA).dropna().empty:
-                fig_oncelik = px.pie(df_rapor, names="ÖNCELİK", title="⚡ Aciliyet / Öncelik Dağılımı", 
-                                     hole=0.3, color="ÖNCELİK", color_discrete_map=renk_haritasi)
+                fig_oncelik = px.pie(df_rapor, names="ÖNCELİK", title="⚡ Aciliyet / Öncelik Dağılımı", hole=0.3, color="ÖNCELİK", color_discrete_map=renk_haritasi)
                 st.plotly_chart(fig_oncelik, use_container_width=True)
 
         with c2:
-            # Sorumlu Analizi (Donut)
             if "ANA SORUMLU" in df_rapor.columns and not df_rapor['ANA SORUMLU'].replace("", pd.NA).dropna().empty:
                 fig_sorumlu = px.pie(df_rapor, names="ANA SORUMLU", hole=0.4, title="👤 Personel Sorumluluk Dağılımı")
                 fig_sorumlu.update_traces(textposition='inside', textinfo='percent+label')
                 st.plotly_chart(fig_sorumlu, use_container_width=True)
             
-            # Durum Dağılımı (Pie)
             fig_durum = px.pie(df_rapor, names="DURUM", title="📌 Genel İş Durumu")
             st.plotly_chart(fig_durum, use_container_width=True)
             
         st.divider()
         
-        # 3. SATIR: YAKLAŞAN / ACİL İŞLER TABLOSU
         st.markdown("#### ⏳ Yaklaşan ve Acil Görevler (Filtrelenmiş İşler İçinden)")
         try:
-            # Sadece Bekliyor ve Devam Ediyor olanları al
             df_yaklasan = df_rapor[df_rapor['DURUM'].isin(['Bekliyor', 'Devam Ediyor'])].copy()
-            # Tarih formatını güvenli bir şekilde çevir
             df_yaklasan['BİTİŞ'] = pd.to_datetime(df_yaklasan['BİTİŞ'], errors='coerce')
             df_yaklasan = df_yaklasan.dropna(subset=['BİTİŞ']).sort_values(by='BİTİŞ')
             
             if not df_yaklasan.empty:
                 df_yaklasan['BİTİŞ'] = df_yaklasan['BİTİŞ'].dt.strftime('%Y-%m-%d')
-                st.dataframe(
-                    df_yaklasan[['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BİTİŞ', 'ÖNCELİK']], 
-                    use_container_width=True, 
-                    hide_index=True
-                )
+                st.dataframe(df_yaklasan[['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BİTİŞ', 'ÖNCELİK']], use_container_width=True, hide_index=True)
             else:
                 st.success("Seçili filtrelere göre beklemede olan görev bulunmuyor!")
         except Exception as e:
@@ -345,8 +331,22 @@ with sekme_sozlugu["👤 Profil Ayarları"]:
 # ================= TAB: KULLANICI YÖNETİMİ =================
 if "👥 Kullanıcı Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["👥 Kullanıcı Yönetimi"]:
-        ed_u = st.data_editor(st.session_state.kullanicilar, num_rows="dynamic", use_container_width=True,
-                             column_config={"ROL": st.column_config.SelectboxColumn("ROL", options=["Admin", "User", "Guest"])})
+        st.subheader("👥 Kullanıcı ve Erişim Yönetimi")
+        
+        # YENİ EKLENTİ: EMAIL SÜTUNU
+        ed_u = st.data_editor(
+            st.session_state.kullanicilar, 
+            num_rows="dynamic", 
+            use_container_width=True,
+            column_config={
+                "KULLANICI_ADI": st.column_config.TextColumn("Kullanıcı Adı"),
+                "SIFRE": st.column_config.TextColumn("Şifre"),
+                "ROL": st.column_config.SelectboxColumn("Yetki Rolü", options=["Admin", "User", "Guest"]),
+                "EMAIL": st.column_config.TextColumn("E-Posta Adresi")
+            }
+        )
         if st.button("💾 Kullanıcıları Kaydet"):
             st.session_state.kullanicilar = ed_u
-            tablo_kaydet(ed_u, "Kullanıcılar"); st.success("Kaydedildi!"); st.rerun()
+            tablo_kaydet(ed_u, "Kullanıcılar")
+            st.success("Kullanıcılar başarıyla kaydedildi!")
+            st.rerun()
