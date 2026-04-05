@@ -183,7 +183,9 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
         gosterilecek = display_df.drop(columns=['AŞAMALAR', 'KAYIT_TARIHI'], errors='ignore')
         sel = st.dataframe(gosterilecek, use_container_width=True, height=350, selection_mode="single-row", on_select="rerun", key="tablo")
         rows = sel.get("selection", {}).get("rows", [])
-        if rows:
+        
+        # HATA DÜZELTME: FİLTRE YAPILDIĞINDA HAFIZADA KALAN SATIRIN YENİ LİSTEDE OLUP OLMADIĞINI KONTROL EDİYORUZ
+        if rows and len(rows) > 0 and rows[0] < len(gosterilecek):
             idx = gosterilecek.index[rows[0]]
             secili = st.session_state.data.loc[idx]
             with st.container(border=True):
@@ -268,10 +270,7 @@ with sekme_sozlugu["📊 Raporlama"]:
 if "🏢 Firma Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["🏢 Firma Yönetimi"]:
         st.subheader("🏢 Firma ve Rehber Yönetimi")
-        
-        # HATA DÜZELTME: Veriyi data editor'e göndermeden önce KESİN metne çeviriyoruz.
         st.session_state.firmalar_db = st.session_state.firmalar_db.fillna("").astype(str)
-        
         ed_firmalar = st.data_editor(
             st.session_state.firmalar_db, 
             num_rows="dynamic", 
@@ -354,10 +353,9 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
             tablo_kaydet(st.session_state.todo_db, "Yapilacaklar")
             st.success("Kişisel listeniz başarıyla güncellendi!"); st.rerun()
 
-# ================= TAB: VERİ YÖNETİMİ (EXCEL İNDİRME DÜZELTİLDİ) =================
+# ================= TAB: VERİ YÖNETİMİ =================
 if "⚙️ Veri Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["⚙️ Veri Yönetimi"]:
-        # HATA DÜZELTME: utf-8 yerine utf-8-sig kullanılarak Excel'de Türkçe karakterlerin bozulması engellendi.
         st.download_button("📥 İş Listesini İndir", display_df.to_csv(index=False).encode('utf-8-sig'), "tsi_is_takibi.csv", "text/csv")
 
 # ================= TAB: PROFİL AYARLARI =================
