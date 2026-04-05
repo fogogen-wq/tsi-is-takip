@@ -82,9 +82,14 @@ if st.sidebar.button("🚪 Çıkış Yap"):
     st.session_state.giris_basarili = False
     st.rerun()
 
-# ALFABETİK LİSTELER
-liste_firmalar = sorted(st.session_state.firmalar_db['FİRMA_ADI'].dropna().unique().tolist())
-gorev_sorumlulari = st.session_state.data['ANA SORUMLU'].dropna().unique().tolist() if not st.session_state.data.empty else []
+# --- ALFABETİK VE ORTAK LİSTELERİ OLUŞTURMA ---
+# Firma Listesi: Hem görevlerdeki ("FİRMA") hem de CRM'deki ("FİRMA_ADI") firmaları birleştir
+firmalar_crm = [str(f).strip() for f in st.session_state.firmalar_db['FİRMA_ADI'].dropna().tolist() if str(f).strip() != ""] if not st.session_state.firmalar_db.empty else []
+firmalar_gorev = [str(f).strip() for f in st.session_state.data['FİRMA'].dropna().tolist() if str(f).strip() != ""] if not st.session_state.data.empty else []
+liste_firmalar = sorted(list(set(firmalar_crm + firmalar_gorev)))
+
+# Sorumlu Listesi: Kullanıcı tablosu + Görevlerdeki isimler
+gorev_sorumlulari = [str(s).strip() for s in st.session_state.data['ANA SORUMLU'].dropna().tolist() if str(s).strip() != ""] if not st.session_state.data.empty else []
 liste_sorumlular = sorted(list(set(kullanici_listesi + gorev_sorumlulari)))
 
 st.sidebar.divider()
@@ -115,10 +120,16 @@ if "➕ Yeni Görev" in sekme_sozlugu:
     with sekme_sozlugu["➕ Yeni Görev"]:
         fid = st.session_state.form_id
         c1, c2 = st.columns(2)
+        
         v_ad = c1.text_input("Görev Adı *", key=f"frm_ad_{fid}")
-        v_f_sec = c1.selectbox("Firma *", ["Seçiniz"] + liste_firmalar, key=f"frm_f_sec_{fid}")
+        
+        # Firma Seçimi (Yeni Ekle seçeneği geri geldi!)
+        v_f_sec = c1.selectbox("Firma *", ["Seçiniz", "➕ YENİ EKLE..."] + liste_firmalar, key=f"frm_f_sec_{fid}")
+        v_firma = c1.text_input("Yeni Firma Adı *", key=f"frm_f_yeni_{fid}") if v_f_sec == "➕ YENİ EKLE..." else v_f_sec
+        
         v_s_sec = c2.selectbox("Ana Sorumlu *", ["➕ YENİ EKLE..."] + liste_sorumlular, key=f"frm_s_sec_{fid}")
         v_sorumlu = c2.text_input("Yeni Sorumlu Adı", key=f"frm_s_yeni_{fid}") if v_s_sec == "➕ YENİ EKLE..." else v_s_sec
+        
         v_bitis = c2.date_input("Bitiş", datetime.now() + timedelta(days=7), key=f"frm_bit_{fid}")
         v_oncelik = st.selectbox("Öncelik", ["Düşük", "Orta", "Yüksek"], key=f"frm_on_{fid}")
         v_durum = st.selectbox("Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı"], key=f"frm_dr_{fid}")
@@ -140,9 +151,15 @@ if "➕ Yeni Görev" in sekme_sozlugu:
             st.rerun()
 
         if st.button("✅ KAYDET", use_container_width=True):
-            if v_ad and v_f_sec != "Seçiniz":
+            if v_ad and v_firma and v_firma != "Seçiniz":
+                # EĞER YENİ BİR FİRMA İSE, OTOMATİK OLARAK "FİRMA YÖNETİMİ" (CRM) LİSTESİNE EKLER
+                if v_firma not in firmalar_crm:
+                    yeni_firma_satir = pd.DataFrame([{"FİRMA_ADI": v_firma, "YETKİLİ_KİŞİ": "", "EMAIL": "", "TITLE": "", "NOTLAR": ""}])
+                    st.session_state.firmalar_db = pd.concat([st.session_state.firmalar_db, yeni_firma_satir], ignore_index=True)
+                    tablo_kaydet(st.session_state.firmalar_db, "Firmalar")
+
                 yeni = {
-                    'GÖREV ADI': v_ad, 'FİRMA': v_f_sec, 'ANA SORUMLU': v_sorumlu,
+                    'GÖREV ADI': v_ad, 'FİRMA': v_firma, 'ANA SORUMLU': v_sorumlu,
                     'BAŞLANGIÇ': datetime.now().strftime('%Y-%m-%d'), 'BİTİŞ': v_bitis.strftime('%Y-%m-%d'),
                     'DURUM': v_durum, 'ÖNCELİK': v_oncelik, 'NOTLAR': v_not,
                     'AŞAMALAR': json.dumps([a for a in yeni_asamalar if a["Aşama Adı"].strip()], ensure_ascii=False),
@@ -150,8 +167,11 @@ if "➕ Yeni Görev" in sekme_sozlugu:
                 }
                 st.session_state.data = pd.concat([st.session_state.data, pd.DataFrame([yeni])], ignore_index=True)
                 tablo_kaydet(st.session_state.data, "Sayfa1")
-                st.success("Görev Kaydedildi!"); formu_sifirla(); st.rerun()
-            else: st.error("Lütfen Görev Adı ve Firma seçin.")
+                st.success("Görev başarıyla kaydedildi!")
+                formu_sifirla()
+                st.rerun()
+            else: 
+                st.error("Lütfen Görev Adı yazın ve Firma seçin.")
 
 # ================= TAB: FİRMA YÖNETİMİ (CRM) =================
 if "🏢 Firma Yönetimi" in sekme_sozlugu:
@@ -174,7 +194,7 @@ if "🏢 Firma Yönetimi" in sekme_sozlugu:
         if st.button("💾 Firma Bilgilerini Kaydet"):
             st.session_state.firmalar_db = ed_firmalar
             tablo_kaydet(ed_firmalar, "Firmalar")
-            st.success("Rehber güncellendi!"); st.rerun()
+            st.success("Firma rehberi güncellendi!"); st.rerun()
 
 # ================= TAB: İŞ LİSTESİ VE DETAYLAR =================
 with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
@@ -187,9 +207,8 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
             secili = st.session_state.data.loc[idx]
             with st.container(border=True):
                 st.markdown(f"### 🎯 {secili['GÖREV ADI']}")
-                # Firma bilgisi (CRM'den çek)
                 firma_info = st.session_state.firmalar_db[st.session_state.firmalar_db['FİRMA_ADI'] == secili['FİRMA']]
-                if not firma_info.empty:
+                if not firma_info.empty and str(firma_info.iloc[0]['YETKİLİ_KİŞİ']).strip() != "":
                     st.caption(f"📞 Yetkili: {firma_info.iloc[0]['YETKİLİ_KİŞİ']} | 📧 {firma_info.iloc[0]['EMAIL']}")
                 
                 c1, c2 = st.columns(2)
@@ -207,7 +226,7 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                     tablo_kaydet(st.session_state.data, "Sayfa1")
                     st.success("Güncellendi!"); st.rerun()
 
-# --- DİĞER SEKMELER ---
+# ================= TAB: DİĞER SEKMELER =================
 with sekme_sozlugu["📊 Raporlama"]:
     if not display_df.empty:
         c1, c2 = st.columns(2)
@@ -226,6 +245,10 @@ with sekme_sozlugu["👤 Profil Ayarları"]:
                 tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar")
                 st.success("Şifre güncellendi!"); st.rerun()
             else: st.error("Eski şifre yanlış.")
+
+if "⚙️ Veri Yönetimi" in sekme_sozlugu:
+    with sekme_sozlugu["⚙️ Veri Yönetimi"]:
+        st.download_button("📥 Verileri İndir", display_df.to_csv(index=False).encode('utf-8'), "yedek.csv", "text/csv")
 
 if "👥 Kullanıcı Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["👥 Kullanıcı Yönetimi"]:
