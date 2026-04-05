@@ -28,12 +28,17 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 if 'form_id' not in st.session_state:
     st.session_state.form_id = 0  
 
-# --- VERİ YÜKLEME VE KAYDETME FONKSİYONLARI ---
+# --- VERİ YÜKLEME VE KURŞUN GEÇİRMEZ KORUMA FONKSİYONU ---
 def tablo_yukle(sheet_name, fallback_cols):
     try:
         df = conn.read(worksheet=sheet_name, ttl=0)
         if df.empty:
             return pd.DataFrame(columns=fallback_cols)
+            
+        # KORUMA: Google Sheets'te kolon adı yanlış yazılmışsa veya eksikse, çökmesini engellemek için otomatik ekle
+        for col in fallback_cols:
+            if col not in df.columns:
+                df[col] = ""
         return df
     except:
         return pd.DataFrame(columns=fallback_cols)
@@ -48,6 +53,7 @@ if 'firmalar_db' not in st.session_state:
     st.session_state.firmalar_db = tablo_yukle("Firmalar", ["FİRMA_ADI", "YETKİLİ_KİŞİ", "EMAIL", "TITLE", "NOTLAR"])
 if 'data' not in st.session_state: 
     st.session_state.data = tablo_yukle("Sayfa1", ['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BAŞLANGIÇ', 'BİTİŞ', 'DURUM', 'ÖNCELİK', 'NOTLAR', 'AŞAMALAR', 'KAYIT_TARIHI'])
+
 if 'temp_stages' not in st.session_state:
     st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Aynı", "Durum": "Bekliyor", "Not": ""}]
 
@@ -194,13 +200,13 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                 
                 if st.session_state.aktif_rol == "Guest":
                     st.info(f"**Durum:** {secili['DURUM']} | **Not:** {secili['NOTLAR']}")
-                    as_list = json.loads(secili['AŞAMALAR']) if secili['AŞAMALAR'] else []
+                    as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
                     st.dataframe(pd.DataFrame(as_list), use_container_width=True, hide_index=True)
                 else:
                     y_dr = c1.selectbox("Durum", durumlar, index=mevcut_durum_index, key=f"up_dr_{idx}")
-                    y_nt = c2.text_input("Not", value=str(secili['NOTLAR']), key=f"up_nt_{idx}")
+                    y_nt = c2.text_input("Not", value=str(secili['NOTLAR']) if pd.notna(secili['NOTLAR']) else "", key=f"up_nt_{idx}")
                     
-                    as_list = json.loads(secili['AŞAMALAR']) if secili['AŞAMALAR'] else []
+                    as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
                     ed_as = st.data_editor(pd.DataFrame(as_list) if as_list else pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Durum", "Not"]), num_rows="dynamic", use_container_width=True, key=f"ed_as_{idx}",
                                           column_config={"Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=liste_sorumlular)})
                     
@@ -243,7 +249,7 @@ if "🏢 Firma Yönetimi" in sekme_sozlugu:
 # ================= TAB: VERİ YÖNETİMİ =================
 if "⚙️ Veri Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["⚙️ Veri Yönetimi"]:
-        st.download_button("📥 İş Listesini İndir", display_df.to_csv(index=False).encode('utf-8'), "yedek.csv", "text/csv")
+        st.download_button("📥 İş Listesini İndir", display_df.to_csv(index=False).encode('utf-8'), "tsi_is_takibi.csv", "text/csv")
 
 # ================= TAB: PROFİL AYARLARI =================
 with sekme_sozlugu["👤 Profil Ayarları"]:
