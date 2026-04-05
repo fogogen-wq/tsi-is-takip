@@ -29,22 +29,25 @@ if 'form_id' not in st.session_state:
     st.session_state.form_id = 0  
 
 # --- VERİ YÜKLEME/KAYDETME ---
-def tablo_yukle(sheet_name):
+def tablo_yukle(sheet_name, fallback_cols):
     try:
-        return conn.read(worksheet=sheet_name, ttl=0)
+        df = conn.read(worksheet=sheet_name, ttl=0)
+        if df.empty:
+            return pd.DataFrame(columns=fallback_cols)
+        return df
     except:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=fallback_cols)
 
 def tablo_kaydet(df, sheet_name):
     conn.update(spreadsheet=URL, worksheet=sheet_name, data=df.fillna(""))
 
 # --- 2. SESSION STATE ---
 if 'kullanicilar' not in st.session_state: 
-    st.session_state.kullanicilar = tablo_yukle("Kullanıcılar")
+    st.session_state.kullanicilar = tablo_yukle("Kullanıcılar", ["KULLANICI_ADI", "SIFRE", "ROL"])
 if 'firmalar_db' not in st.session_state: 
-    st.session_state.firmalar_db = tablo_yukle("Firmalar")
+    st.session_state.firmalar_db = tablo_yukle("Firmalar", ["FİRMA_ADI", "YETKİLİ_KİŞİ", "EMAIL", "TITLE", "NOTLAR"])
 if 'data' not in st.session_state: 
-    st.session_state.data = tablo_yukle("Sayfa1")
+    st.session_state.data = tablo_yukle("Sayfa1", ['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BAŞLANGIÇ', 'BİTİŞ', 'DURUM', 'ÖNCELİK', 'NOTLAR', 'AŞAMALAR', 'KAYIT_TARIHI'])
 if 'temp_stages' not in st.session_state:
     st.session_state.temp_stages = [{"Aşama Adı": "", "Sorumlu": "Aynı", "Durum": "Bekliyor", "Not": ""}]
 
@@ -58,7 +61,7 @@ def formu_sifirla():
 if "giris_basarili" not in st.session_state:
     st.session_state.giris_basarili, st.session_state.aktif_kullanici, st.session_state.aktif_rol = False, None, None
 
-kullanici_listesi = sorted(st.session_state.kullanicilar['KULLANICI_ADI'].unique().tolist()) if not st.session_state.kullanicilar.empty else ["Yönetici"]
+kullanici_listesi = sorted(st.session_state.kullanicilar['KULLANICI_ADI'].dropna().unique().tolist()) if not st.session_state.kullanicilar.empty else ["Yönetici"]
 
 if not st.session_state.giris_basarili:
     st.sidebar.title("🔐 Giriş")
@@ -79,9 +82,10 @@ if st.sidebar.button("🚪 Çıkış Yap"):
     st.session_state.giris_basarili = False
     st.rerun()
 
-# Listeleri Alfabetik Hazırla
-liste_firmalar = sorted(st.session_state.firmalar_db['FİRMA_ADI'].unique().tolist()) if not st.session_state.firmalar_db.empty else []
-liste_sorumlular = sorted(list(set(kullanici_listesi + (st.session_state.data['ANA SORUMLU'].dropna().unique().tolist() if not st.session_state.data.empty else []))))
+# ALFABETİK LİSTELER
+liste_firmalar = sorted(st.session_state.firmalar_db['FİRMA_ADI'].dropna().unique().tolist())
+gorev_sorumlulari = st.session_state.data['ANA SORUMLU'].dropna().unique().tolist() if not st.session_state.data.empty else []
+liste_sorumlular = sorted(list(set(kullanici_listesi + gorev_sorumlulari)))
 
 st.sidebar.divider()
 st.sidebar.markdown("### 🔍 Filtreler")
@@ -153,7 +157,6 @@ if "➕ Yeni Görev" in sekme_sozlugu:
 if "🏢 Firma Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["🏢 Firma Yönetimi"]:
         st.subheader("🏢 Firma ve Rehber Yönetimi")
-        st.caption("Yeni firma ekleyebilir veya mevcut firmaların iletişim bilgilerini düzenleyebilirsiniz.")
         
         ed_firmalar = st.data_editor(
             st.session_state.firmalar_db,
@@ -164,17 +167,16 @@ if "🏢 Firma Yönetimi" in sekme_sozlugu:
                 "FİRMA_ADI": st.column_config.TextColumn("Firma Adı *", required=True),
                 "YETKİLİ_KİŞİ": st.column_config.TextColumn("Yetkili Kişi"),
                 "EMAIL": st.column_config.TextColumn("E-Posta"),
-                "TITLE": st.column_config.TextColumn("Unvan/Pozisyon"),
+                "TITLE": st.column_config.TextColumn("Unvan"),
                 "NOTLAR": st.column_config.TextColumn("Notlar")
             }
         )
         if st.button("💾 Firma Bilgilerini Kaydet"):
             st.session_state.firmalar_db = ed_firmalar
             tablo_kaydet(ed_firmalar, "Firmalar")
-            st.success("Rehber güncellendi!")
-            st.rerun()
+            st.success("Rehber güncellendi!"); st.rerun()
 
-# ================= TAB: İŞ LİSTESİ VE DİĞERLERİ =================
+# ================= TAB: İŞ LİSTESİ VE DETAYLAR =================
 with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
     if not display_df.empty:
         gosterilecek = display_df.drop(columns=['AŞAMALAR', 'KAYIT_TARIHI'], errors='ignore')
@@ -195,8 +197,8 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                                     index=["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"].index(secili['DURUM']) if secili['DURUM'] in ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"] else 0, key=f"up_dr_{idx}")
                 y_nt = c2.text_input("Not", value=str(secili['NOTLAR']), key=f"up_nt_{idx}")
                 
-                as_df = pd.DataFrame(json.loads(secili['AŞAMALAR']) if secili['AŞAMALAR'] else [])
-                ed_as = st.data_editor(as_df if not as_df.empty else pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Durum", "Not"]), num_rows="dynamic", use_container_width=True, key=f"ed_as_{idx}")
+                as_list = json.loads(secili['AŞAMALAR']) if secili['AŞAMALAR'] else []
+                ed_as = st.data_editor(pd.DataFrame(as_list) if as_list else pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Durum", "Not"]), num_rows="dynamic", use_container_width=True, key=f"ed_as_{idx}")
                 
                 if st.button("💾 Güncelle", use_container_width=True):
                     st.session_state.data.at[idx, 'DURUM'] = y_dr
@@ -205,8 +207,7 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                     tablo_kaydet(st.session_state.data, "Sayfa1")
                     st.success("Güncellendi!"); st.rerun()
 
-# Profil, Rapor ve Kullanıcı sekmeleri aynı mantıkla devam eder...
-# (Kodun geri kalanı önceki sürümlerle aynı yapıdadır)
+# --- DİĞER SEKMELER ---
 with sekme_sozlugu["📊 Raporlama"]:
     if not display_df.empty:
         c1, c2 = st.columns(2)
@@ -215,15 +216,16 @@ with sekme_sozlugu["📊 Raporlama"]:
 
 with sekme_sozlugu["👤 Profil Ayarları"]:
     st.subheader("👤 Şifre Güncelleme")
-    e_pwd = st.text_input("Eski Şifre", type="password")
-    n_pwd = st.text_input("Yeni Şifre", type="password")
-    if st.button("💾 Şifreyi Değiştir"):
-        idx = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == st.session_state.aktif_kullanici].index[0]
-        if str(st.session_state.kullanicilar.at[idx, 'SIFRE']) == e_pwd:
-            st.session_state.kullanicilar.at[idx, 'SIFRE'] = n_pwd
-            tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar")
-            st.success("Şifre güncellendi!")
-        else: st.error("Hatalı eski şifre.")
+    with st.container(border=True):
+        e_pwd = st.text_input("Eski Şifre", type="password")
+        n_pwd = st.text_input("Yeni Şifre", type="password")
+        if st.button("💾 Şifreyi Değiştir"):
+            u_idx = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == st.session_state.aktif_kullanici].index[0]
+            if str(st.session_state.kullanicilar.at[u_idx, 'SIFRE']) == e_pwd:
+                st.session_state.kullanicilar.at[u_idx, 'SIFRE'] = n_pwd
+                tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar")
+                st.success("Şifre güncellendi!"); st.rerun()
+            else: st.error("Eski şifre yanlış.")
 
 if "👥 Kullanıcı Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["👥 Kullanıcı Yönetimi"]:
@@ -231,4 +233,4 @@ if "👥 Kullanıcı Yönetimi" in sekme_sozlugu:
                              column_config={"ROL": st.column_config.SelectboxColumn("ROL", options=["Admin", "User", "Guest"])})
         if st.button("💾 Kullanıcıları Kaydet"):
             st.session_state.kullanicilar = ed_u
-            tablo_kaydet(ed_u, "Kullanıcılar"); st.success("Kaydedildi!")
+            tablo_kaydet(ed_u, "Kullanıcılar"); st.success("Kaydedildi!"); st.rerun()
