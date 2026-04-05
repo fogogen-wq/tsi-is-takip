@@ -62,7 +62,7 @@ def veriyi_kaydet(df):
     conn.update(
         spreadsheet="https://docs.google.com/spreadsheets/d/1iF2VPQmygjibDXm3Q93COpMu0r4p4odayQZa_0ej0qM/edit?usp=sharing",
         worksheet="Sayfa1",
-        data=df
+        data=temiz_df
     )
 
 # Session State Atamaları
