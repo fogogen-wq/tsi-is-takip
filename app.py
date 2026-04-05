@@ -206,11 +206,11 @@ with tab_liste:
         gosterilecek_df = display_df.drop(columns=['AŞAMALAR', 'KAYIT_TARIHI'])
         
         # Checkbox yerine Tıklanabilir Seçim (on_select="rerun") eklendi
-        selection = st.dataframe(
+      selection = st.dataframe(
             gosterilecek_df,
             use_container_width=True,
             height=350,
-            selection_mode="single_row", # <-- HATA BURADA
+            selection_mode="single-row", # <-- DÜZELDİ (Tire kullanıldı)
             on_select="rerun",
             key="ana_tablo_secim"
         )
