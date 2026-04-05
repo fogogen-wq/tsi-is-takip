@@ -52,10 +52,9 @@ if 'firmalar_db' not in st.session_state: st.session_state.firmalar_db = tablo_y
 if 'data' not in st.session_state: st.session_state.data = tablo_yukle("Sayfa1", ['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BAŞLANGIÇ', 'BİTİŞ', 'DURUM', 'ÖNCELİK', 'NOTLAR', 'AŞAMALAR', 'KAYIT_TARIHI'])
 if 'toplanti_db' not in st.session_state: st.session_state.toplanti_db = tablo_yukle("Toplantı_Notları", ["TARİH", "KONU", "İLGİLİ_FİRMA", "KATILIMCILAR", "NOTLAR"])
 
-# YENİ EKLENTİ: YAPILACAKLAR LİSTESİ VERİTABANI
+# YENİ EKLENTİ: YAPILACAKLAR LİSTESİ (MODERNİZE EDİLDİ)
 if 'todo_db' not in st.session_state: 
-    df_todo = tablo_yukle("Yapilacaklar", ["YAPILACAK_IS", "TAMAMLANDI", "KULLANICI"])
-    # Checkbox'ların çalışması için metinleri True/False (Boolean) değerlere çeviriyoruz
+    df_todo = tablo_yukle("Yapilacaklar", ["YAPILACAK_IS", "TAMAMLANDI", "KULLANICI", "ÖNCELİK", "BİTİŞ_TARİHİ"])
     df_todo['TAMAMLANDI'] = df_todo['TAMAMLANDI'].astype(str).str.upper().isin(['TRUE', '1'])
     st.session_state.todo_db = df_todo
 
@@ -114,7 +113,7 @@ tabs_list = ["➕ Yeni Görev", "📋 İş Listesi ve Detaylar", "📊 Raporlama
 if st.session_state.aktif_rol in ["Admin", "User"]:
     tabs_list.append("🏢 Firma Yönetimi")
     tabs_list.append("📝 Toplantı & Notlar")
-    tabs_list.append("✅ Yapılacaklar") # YENİ CHECKLIST SEKMESİ
+    tabs_list.append("✅ Yapılacaklar")
     tabs_list.append("⚙️ Veri Yönetimi")
 tabs_list.append("👤 Profil Ayarları")
 if st.session_state.aktif_rol == "Admin": tabs_list.append("👥 Kullanıcı Yönetimi")
@@ -278,34 +277,46 @@ if "📝 Toplantı & Notlar" in sekme_sozlugu:
                 st.session_state.toplanti_db = ed_notlar
                 tablo_kaydet(ed_notlar, "Toplantı_Notları"); st.success("Arşiv güncellendi!"); st.rerun()
 
-# ================= TAB: YAPILACAKLAR (CHECKLIST) YENİ! =================
+# ================= TAB: YAPILACAKLAR (MODERNİZE EDİLDİ) =================
 if "✅ Yapılacaklar" in sekme_sozlugu:
     with sekme_sozlugu["✅ Yapılacaklar"]:
-        st.subheader("✅ Kişisel Yapılacaklar Listesi (To-Do)")
-        st.caption(f"Sadece size ({st.session_state.aktif_kullanici}) ait olan hızlı işleri buradan takip edebilir, bittikçe kutucukları işaretleyebilirsiniz.")
+        st.subheader("✅ Akıllı Yapılacaklar Ajandası (To-Do)")
+        st.caption(f"Hoş geldin {st.session_state.aktif_kullanici}! İşlerini önceliklendir, tarih ver ve ilerlemeni takip et.")
         
-        # Sadece o anki kullanıcıya ait olan yapılacakları filtreliyoruz
         kullanici_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] == st.session_state.aktif_kullanici].copy()
         
-        # Checkbox sütunu ve ayarları
+        # 1. Görsel İlerleme (Gamification - Progress Bar)
+        toplam_is = len(kullanici_todos)
+        biten_is = len(kullanici_todos[kullanici_todos['TAMAMLANDI'] == True])
+        
+        if toplam_is > 0:
+            tamamlanma_orani = int((biten_is / toplam_is) * 100)
+            st.progress(tamamlanma_orani, text=f"Günlük İlerleme: %{tamamlanma_orani} ({biten_is} / {toplam_is} Görev Tamamlandı)")
+        else:
+            st.info("Harika! Şimdilik yapılacak işin görünmüyor. Yeni bir görev ekleyebilirsin.")
+        
+        # Biten işleri otomatik en alta atma (Auto-sorting)
+        kullanici_todos = kullanici_todos.sort_values(by=['TAMAMLANDI'])
+        
+        # 2. Modern Tablo Ayarları (Öncelik ve Tarih)
         ed_todos = st.data_editor(
             kullanici_todos,
             num_rows="dynamic",
             use_container_width=True,
             hide_index=True,
-            key="todo_editor",
+            key="todo_editor_modern",
             column_config={
-                "TAMAMLANDI": st.column_config.CheckboxColumn("✅ Bitti mi?", default=False, width="small"),
+                "TAMAMLANDI": st.column_config.CheckboxColumn("✅ Bitti", default=False, width="small"),
                 "YAPILACAK_IS": st.column_config.TextColumn("📝 Ne Yapılacak?", required=True, width="large"),
-                "KULLANICI": None # Kullanıcı sütununu ekranda gizle ki kalabalık yapmasın
+                "ÖNCELİK": st.column_config.SelectboxColumn("⚡ Öncelik", options=["🔴 Yüksek", "🟡 Orta", "🟢 Düşük"], width="medium"),
+                "BİTİŞ_TARİHİ": st.column_config.DateColumn("📅 Bitiş Tarihi", format="YYYY-MM-DD", width="medium"),
+                "KULLANICI": None # Arka planda kalır, ekranda yer kaplamaz
             }
         )
         
-        if st.button("💾 Listemi Kaydet", use_container_width=True):
-            # Yeni satırlar eklendiyse onlara otomatik olarak aktif kullanıcı adını ata
+        if st.button("💾 Değişiklikleri Kaydet", use_container_width=True):
             ed_todos['KULLANICI'] = st.session_state.aktif_kullanici
             
-            # Ana veritabanından bu kullanıcının eski kayıtlarını sil, yenilerini (düzenlenmiş halini) ekle
             diger_kullanicilar_todos = st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] != st.session_state.aktif_kullanici]
             st.session_state.todo_db = pd.concat([diger_kullanicilar_todos, ed_todos], ignore_index=True)
             
