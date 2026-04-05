@@ -58,7 +58,8 @@ def veriyi_yukle():
         return pd.DataFrame(columns=columns)
 
 def veriyi_kaydet(df):
-    conn.update(data=df)
+    # Google Sheet Linki doğrudan tanımlandı, UnsupportedOperationError hatası çözüldü
+    conn.update(spreadsheet="https://docs.google.com/spreadsheets/d/1iF2VPQmygjibDXm3Q93COpMu0r4p4odayQZa_0ej0qM/edit?usp=sharing", data=df)
 
 # Session State Atamaları
 if 'kullanicilar' not in st.session_state: st.session_state.kullanicilar = kullanici_yukle()
@@ -208,6 +209,7 @@ with tab_liste:
     if not display_df.empty:
         gosterilecek_df = display_df.drop(columns=['AŞAMALAR', 'KAYIT_TARIHI'], errors='ignore')
         
+        # Tire ile yazılmış doğru selection_mode parametresi eklendi
         selection = st.dataframe(
             gosterilecek_df,
             use_container_width=True,
