@@ -80,10 +80,10 @@ if not st.session_state.giris_basarili:
             st.session_state.giris_basarili, st.session_state.aktif_kullanici = True, user
             st.session_state.aktif_rol = user_row.iloc[0]['ROL']
             st.rerun()
-        else: st.sidebar.error("Hatalı Giriş veya Şifre!")
+        else: st.sidebar.error("Hatalı Giriş!")
     st.stop()
 
-# --- 4. SIDEBAR VE GELİŞMİŞ FİLTRELER ---
+# --- 4. SIDEBAR VE FİLTRELER ---
 st.sidebar.success(f"Hoş geldin, {st.session_state.aktif_kullanici}!")
 if st.sidebar.button("🚪 Çıkış Yap"):
     st.session_state.giris_basarili = False; st.rerun()
@@ -96,30 +96,18 @@ gorev_sorumlulari = [str(s).strip() for s in st.session_state.data['ANA SORUMLU'
 liste_sorumlular = sorted(list(set(kullanici_listesi + gorev_sorumlulari)))
 
 st.sidebar.divider()
-st.sidebar.markdown("### 🔍 Detaylı Filtreler")
+st.sidebar.markdown("### 🔍 Filtreler")
 display_df = st.session_state.data.copy()
 
-# FİLTRELER (DURUM GERİ GELDİ)
 f_firma = st.sidebar.multiselect("🏢 Firma", liste_firmalar)
 f_sorumlu = st.sidebar.multiselect("👤 Sorumlu", liste_sorumlular)
 f_durum = st.sidebar.multiselect("📌 Durum", ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"])
 f_oncelik = st.sidebar.multiselect("⚡ Öncelik", ["Yüksek", "Orta", "Düşük"])
 
-st.sidebar.markdown("**📅 Bitiş Tarihine Göre**")
-tarih_aktif = st.sidebar.checkbox("Tarih Aralığı Belirle")
-if tarih_aktif:
-    t1, t2 = st.sidebar.columns(2)
-    bas_tar = t1.date_input("Başlangıç", datetime.now() - timedelta(days=30))
-    bit_tar = t2.date_input("Bitiş", datetime.now() + timedelta(days=60))
-
-# Filtreleri Uygulama
 if f_firma: display_df = display_df[display_df['FİRMA'].isin(f_firma)]
 if f_sorumlu: display_df = display_df[display_df['ANA SORUMLU'].isin(f_sorumlu)]
 if f_durum: display_df = display_df[display_df['DURUM'].isin(f_durum)]
 if f_oncelik: display_df = display_df[display_df['ÖNCELİK'].isin(f_oncelik)]
-if tarih_aktif:
-    temp_dates = pd.to_datetime(display_df['BİTİŞ'], errors='coerce').dt.date
-    display_df = display_df[temp_dates.between(bas_tar, bit_tar)]
 
 # --- 5. SEKMELER ---
 tabs_list = ["➕ Yeni Görev", "📋 İş Listesi ve Detaylar", "📊 Raporlama"]
@@ -169,8 +157,8 @@ if "➕ Yeni Görev" in sekme_sozlugu:
         if st.button("✅ KAYDET", use_container_width=True):
             if v_ad and v_firma and v_firma != "Seçiniz":
                 if v_firma not in firmalar_crm:
-                    yeni_firma_satir = pd.DataFrame([{"FİRMA_ADI": v_firma, "YETKİLİ_KİŞİ": "", "EMAIL": "", "TITLE": "", "NOTLAR": ""}])
-                    st.session_state.firmalar_db = pd.concat([st.session_state.firmalar_db, yeni_firma_satir], ignore_index=True)
+                    yeni_f = pd.DataFrame([{"FİRMA_ADI": v_firma, "YETKİLİ_KİŞİ": "", "EMAIL": "", "TITLE": "", "NOTLAR": ""}])
+                    st.session_state.firmalar_db = pd.concat([st.session_state.firmalar_db, yeni_f], ignore_index=True)
                     tablo_kaydet(st.session_state.firmalar_db, "Firmalar")
 
                 yeni = {
@@ -188,7 +176,7 @@ if "➕ Yeni Görev" in sekme_sozlugu:
 # ================= TAB: İŞ LİSTESİ VE DETAYLAR =================
 with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
     if not display_df.empty:
-        gorunum = st.radio("Görünüm Seçimi", ["🚀 Aktif Görevler", "🗄️ Arşiv (Tamamlanan & İptal)"], horizontal=True)
+        gorunum = st.radio("Filtrelenmiş Liste Görünümü", ["🚀 Aktif Görevler", "🗄️ Arşiv (Tamamlandı & İptal)"], horizontal=True)
         st.divider()
         
         if gorunum == "🚀 Aktif Görevler":
@@ -207,120 +195,72 @@ with sekme_sozlugu["📋 İş Listesi ve Detaylar"]:
                 
                 with st.container(border=True):
                     st.markdown(f"### 🎯 {secili['GÖREV ADI']}")
-                    firma_info = st.session_state.firmalar_db[st.session_state.firmalar_db['FİRMA_ADI'] == secili['FİRMA']]
-                    if not firma_info.empty and str(firma_info.iloc[0]['YETKİLİ_KİŞİ']).strip() != "":
-                        st.caption(f"📞 Yetkili: {firma_info.iloc[0]['YETKİLİ_KİŞİ']} | 📧 {firma_info.iloc[0]['EMAIL']}")
-                    
                     c1, c2 = st.columns(2)
                     durumlar = ["Bekliyor", "Devam Ediyor", "Tamamlandı", "İptal", "Gecikti"]
-                    mevcut_durum_index = durumlar.index(secili['DURUM']) if secili['DURUM'] in durumlar else 0
+                    y_dr = c1.selectbox("Durum", durumlar, index=durumlar.index(secili['DURUM']) if secili['DURUM'] in durumlar else 0, key=f"up_dr_{idx}")
+                    y_nt = c2.text_input("Not", value=str(secili['NOTLAR']), key=f"up_nt_{idx}")
                     
-                    if st.session_state.aktif_rol == "Guest":
-                        st.info(f"**Durum:** {secili['DURUM']} | **Not:** {secili['NOTLAR']}")
-                        as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
-                        st.dataframe(pd.DataFrame(as_list), use_container_width=True, hide_index=True)
-                    else:
-                        y_dr = c1.selectbox("Durum", durumlar, index=mevcut_durum_index, key=f"up_dr_{idx}")
-                        y_nt = c2.text_input("Not", value=str(secili['NOTLAR']) if pd.notna(secili['NOTLAR']) else "", key=f"up_nt_{idx}")
-                        
-                        as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
-                        df_as = pd.DataFrame(as_list)
-                        
-                        if df_as.empty:
-                            df_as = pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Bitiş Tarihi", "Durum", "Not"])
-                        else:
-                            if "Bitiş Tarihi" not in df_as.columns: df_as["Bitiş Tarihi"] = ""
-                            df_as['Bitiş Tarihi'] = pd.to_datetime(df_as['Bitiş Tarihi'], errors='coerce')
-                        
-                        ed_as = st.data_editor(
-                            df_as, num_rows="dynamic", use_container_width=True, key=f"ed_as_{idx}", 
-                            column_config={
-                                "Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=liste_sorumlular),
-                                "Bitiş Tarihi": st.column_config.DateColumn("Bitiş Tarihi", format="YYYY-MM-DD"),
-                                "Durum": st.column_config.SelectboxColumn("Durum", options=durumlar)
-                            }
-                        )
-                        
-                        st.divider()
-                        bc1, bc2 = st.columns(2)
-                        with bc1:
-                            if st.button("💾 Değişiklikleri Kaydet", use_container_width=True):
-                                ed_as['Bitiş Tarihi'] = pd.to_datetime(ed_as['Bitiş Tarihi'], errors='coerce').dt.strftime('%Y-%m-%d').fillna("")
-                                st.session_state.data.at[idx, 'DURUM'] = y_dr
-                                st.session_state.data.at[idx, 'NOTLAR'] = y_nt
-                                st.session_state.data.at[idx, 'AŞAMALAR'] = json.dumps(ed_as.to_dict('records'), ensure_ascii=False)
-                                tablo_kaydet(st.session_state.data, "Sayfa1")
-                                st.success("Görev güncellendi!"); st.rerun()
-                                
-                        with bc2:
-                            if st.button("🚫 Görevi Listeden Kaldır", type="primary", use_container_width=True):
-                                st.session_state.data = st.session_state.data.drop(idx).reset_index(drop=True)
-                                tablo_kaydet(st.session_state.data, "Sayfa1")
-                                st.success("Görev veritabanından kaldırıldı!"); st.rerun()
+                    as_list = json.loads(secili['AŞAMALAR']) if pd.notna(secili['AŞAMALAR']) and secili['AŞAMALAR'] else []
+                    df_as = pd.DataFrame(as_list)
+                    if df_as.empty: df_as = pd.DataFrame(columns=["Aşama Adı", "Sorumlu", "Bitiş Tarihi", "Durum", "Not"])
+                    else: df_as['Bitiş Tarihi'] = pd.to_datetime(df_as['Bitiş Tarihi'], errors='coerce')
+                    
+                    ed_as = st.data_editor(df_as, num_rows="dynamic", use_container_width=True, key=f"ed_as_{idx}", column_config={"Sorumlu": st.column_config.SelectboxColumn("Sorumlu", options=liste_sorumlular), "Bitiş Tarihi": st.column_config.DateColumn("Bitiş Tarihi", format="YYYY-MM-DD"), "Durum": st.column_config.SelectboxColumn("Durum", options=durumlar)})
+                    
+                    bc1, bc2 = st.columns(2)
+                    with bc1:
+                        if st.button("💾 Değişiklikleri Kaydet", use_container_width=True):
+                            ed_as['Bitiş Tarihi'] = pd.to_datetime(ed_as['Bitiş Tarihi'], errors='coerce').dt.strftime('%Y-%m-%d').fillna("")
+                            st.session_state.data.at[idx, 'DURUM'] = y_dr
+                            st.session_state.data.at[idx, 'NOTLAR'] = y_nt
+                            st.session_state.data.at[idx, 'AŞAMALAR'] = json.dumps(ed_as.to_dict('records'), ensure_ascii=False)
+                            tablo_kaydet(st.session_state.data, "Sayfa1")
+                            st.success("Görev güncellendi!"); st.rerun()
+                    with bc2:
+                        if st.button("🚫 Görevi Listeden Kaldır", type="primary", use_container_width=True):
+                            st.session_state.data = st.session_state.data.drop(idx).reset_index(drop=True)
+                            tablo_kaydet(st.session_state.data, "Sayfa1")
+                            st.success("Görev kaldırıldı!"); st.rerun()
         else:
-            st.info("Bu listede gösterilecek bir görev bulunmuyor.")
+            st.info("Bu listede gösterilecek görev bulunmuyor.")
 
-# ================= TAB: GELİŞMİŞ RAPORLAMA (İYİLEŞTİRİLDİ) =================
+# ================= TAB: GELİŞMİŞ RAPORLAMA (TÜM VERİLER DAHİL EDİLDİ) =================
 with sekme_sozlugu["📊 Raporlama"]:
-    st.subheader("📊 Stratejik İş ve Performans Analizi")
+    st.subheader("📊 Stratejik Analiz Paneli")
     
-    if not display_df.empty:
-        df_rapor = display_df.copy()
-        
-        # KPI KARTLARI
+    # RAPORLAMA İÇİN ÖZEL VERİ SETİ (FİLTRELERDEN BAĞIMSIZ TÜM GEÇMİŞİ GÖRÜR)
+    full_df = st.session_state.data.copy()
+    
+    if not full_df.empty:
+        # KPI'lar
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Filtrelenmiş İş", len(df_rapor))
-        m2.metric("Tamamlanan ✅", len(df_rapor[df_rapor['DURUM'] == 'Tamamlandı']))
-        m3.metric("Devam Eden ⏳", len(df_rapor[df_rapor['DURUM'] == 'Devam Ediyor']))
+        m1.metric("Toplam Kayıtlı İş", len(full_df))
+        m2.metric("Tamamlanan ✅", len(full_df[full_df['DURUM'] == 'Tamamlandı']))
         
-        # GECİKEN İŞ ANALİZİ (Bugünü geçenler)
         geciken_count = 0
         try:
-            temp_bitis = pd.to_datetime(df_rapor['BİTİŞ'], errors='coerce').dt.date
-            geciken_count = len(df_rapor[(temp_bitis < datetime.now().date()) & (~df_rapor['DURUM'].isin(['Tamamlandı', 'İptal']))])
+            temp_b = pd.to_datetime(full_df['BİTİŞ'], errors='coerce').dt.date
+            geciken_count = len(full_df[(temp_b < datetime.now().date()) & (~full_df['DURUM'].isin(['Tamamlandı', 'İptal']))])
         except: pass
-        m4.metric("Gecikmiş İş ⚠️", geciken_count, delta_color="inverse")
+        m3.metric("Gecikmiş Aktif İş ⚠️", geciken_count)
         
+        basari_orani = (len(full_df[full_df['DURUM'] == 'Tamamlandı']) / len(full_df)) * 100 if len(full_df) > 0 else 0
+        m4.metric("Başarı Oranı %", f"{basari_orani:.1f}")
+
         st.divider()
-        
         c1, c2 = st.columns(2)
         with c1:
-            # 1. Firma İş Yükü (Duruma Göre)
-            fig_firma = px.histogram(df_rapor, y="FİRMA", color="DURUM", barmode="group", 
-                                     title="🏢 Firmalara Göre İş Durumu Dağılımı", orientation='h',
-                                     color_discrete_map={"Bekliyor": "#FECB52", "Devam Ediyor": "#636EFA", "Tamamlandı": "#00CC96", "İptal": "#EF553B", "Gecikti": "#AB63FA"})
-            st.plotly_chart(fig_firma, use_container_width=True)
-            
-            # 2. Öncelik Dağılımı
-            fig_on = px.pie(df_rapor, names="ÖNCELİK", title="⚡ Aciliyet / Öncelik Pasta Grafiği", hole=0.3,
-                            color="ÖNCELİK", color_discrete_map={"Yüksek": "#EF553B", "Orta": "#FECB52", "Düşük": "#00CC96"})
-            st.plotly_chart(fig_on, use_container_width=True)
-
+            # 1. Tüm zamanların durumu
+            st.plotly_chart(px.pie(full_df, names="DURUM", title="📌 Tüm Zamanların İş Durumu Dağılımı (Arşiv Dahil)", hole=0.3), use_container_width=True)
+            # 2. Firma iş yükü (Tümü)
+            st.plotly_chart(px.histogram(full_df, y="FİRMA", color="DURUM", barmode="stack", title="🏢 Firma Bazlı Tarihsel İş Yükü", orientation='h'), use_container_width=True)
         with c2:
-            # 3. Personel Performans Dağılımı
-            fig_sor = px.pie(df_rapor, names="ANA SORUMLU", hole=0.4, title="👤 Personel Sorumluluk Payı")
-            fig_sor.update_traces(textposition='inside', textinfo='percent+label')
-            st.plotly_chart(fig_sor, use_container_width=True)
-            
-            # 4. Genel Durum Dağılımı
-            fig_dur = px.pie(df_rapor, names="DURUM", title="📌 Genel İş Durumu Dağılımı")
-            st.plotly_chart(fig_dur, use_container_width=True)
-            
-        st.divider()
-        
-        # 5. YAKLAŞAN GÖREVLER ÖZETİ
-        st.markdown("#### ⏳ Yaklaşan ve Acil Görev Listesi")
-        try:
-            df_yaklasan = df_rapor[~df_rapor['DURUM'].isin(['Tamamlandı', 'İptal'])].copy()
-            df_yaklasan['BİTİŞ'] = pd.to_datetime(df_yaklasan['BİTİŞ'], errors='coerce')
-            df_yaklasan = df_yaklasan.dropna(subset=['BİTİŞ']).sort_values(by='BİTİŞ')
-            if not df_yaklasan.empty:
-                st.dataframe(df_yaklasan[['GÖREV ADI', 'FİRMA', 'ANA SORUMLU', 'BİTİŞ', 'ÖNCELİK', 'DURUM']], use_container_width=True, hide_index=True)
-            else: st.info("Şu an için yaklaşan aktif bir görev bulunmuyor.")
-        except: pass
-            
+            # 3. Personel performansı (Tamamlananlar dahil)
+            st.plotly_chart(px.pie(full_df, names="ANA SORUMLU", title="👤 Personel Sorumluluk Paylaşımı", hole=0.4), use_container_width=True)
+            # 4. Aciliyet dağılımı
+            st.plotly_chart(px.pie(full_df, names="ÖNCELİK", title="⚡ Aciliyet / Öncelik Dağılımı", color="ÖNCELİK", color_discrete_map={"Yüksek": "#EF553B", "Orta": "#FECB52", "Düşük": "#00CC96"}), use_container_width=True)
     else:
-        st.warning("Seçtiğiniz filtrelere uyan herhangi bir veri bulunamadı.")
+        st.warning("Analiz edilecek veri bulunmuyor.")
 
 # ================= TAB: DİĞER SEKMELER (SABİT) =================
 if "🏢 Firma Yönetimi" in sekme_sozlugu:
@@ -329,7 +269,7 @@ if "🏢 Firma Yönetimi" in sekme_sozlugu:
         st.session_state.firmalar_db = st.session_state.firmalar_db.fillna("").astype(str)
         ed_f = st.data_editor(st.session_state.firmalar_db, num_rows="dynamic", use_container_width=True, key="crm_ed", column_config={"FİRMA_ADI": st.column_config.TextColumn("Firma Adı", required=True)})
         if st.button("💾 Rehberi Kaydet"):
-            st.session_state.firmalar_db = ed_f.fillna("").astype(str); tablo_kaydet(ed_f, "Firmalar"); st.success("Rehber güncellendi!"); st.rerun()
+            st.session_state.firmalar_db = ed_f.fillna("").astype(str); tablo_kaydet(ed_f, "Firmalar"); st.success("Güncellendi!"); st.rerun()
 
 if "📝 Toplantı & Notlar" in sekme_sozlugu:
     with sekme_sozlugu["📝 Toplantı & Notlar"]:
@@ -342,7 +282,7 @@ if "📝 Toplantı & Notlar" in sekme_sozlugu:
                 if t_konu:
                     y_not = {"TARİH": datetime.now().strftime('%Y-%m-%d'), "KONU": t_konu, "İLGİLİ_FİRMA": t_firma, "NOTLAR": t_notlar}
                     st.session_state.toplanti_db = pd.concat([st.session_state.toplanti_db, pd.DataFrame([y_not])], ignore_index=True)
-                    tablo_kaydet(st.session_state.toplanti_db, "Toplantı_Notları"); st.success("Not kaydedildi!"); formu_sifirla(); st.rerun()
+                    tablo_kaydet(st.session_state.toplanti_db, "Toplantı_Notları"); st.success("Kaydedildi!"); formu_sifirla(); st.rerun()
 
 if "✅ Yapılacaklar" in sekme_sozlugu:
     with sekme_sozlugu["✅ Yapılacaklar"]:
@@ -354,21 +294,21 @@ if "✅ Yapılacaklar" in sekme_sozlugu:
         if st.button("💾 Listeyi Güncelle"):
             ed_t['KULLANICI'] = st.session_state.aktif_kullanici; ed_t['BİTİŞ_TARİHİ'] = ed_t['BİTİŞ_TARİHİ'].dt.strftime('%Y-%m-%d').fillna("")
             st.session_state.todo_db = pd.concat([st.session_state.todo_db[st.session_state.todo_db['KULLANICI'] != st.session_state.aktif_kullanici], ed_t], ignore_index=True)
-            tablo_kaydet(st.session_state.todo_db, "Yapilacaklar"); st.success("Liste kaydedildi!"); st.rerun()
+            tablo_kaydet(st.session_state.todo_db, "Yapilacaklar"); st.success("Başarıyla güncellendi!"); st.rerun()
 
 if "⚙️ Veri Yönetimi" in sekme_sozlugu:
-    with sekme_sozlugu["⚙️ Veri Yönetimi"]: st.download_button("📥 Excel Olarak İndir", display_df.to_csv(index=False).encode('utf-8-sig'), "tsi_is_takibi.csv", "text/csv")
+    with sekme_sozlugu["⚙️ Veri Yönetimi"]: st.download_button("📥 Excel İndir", display_df.to_csv(index=False).encode('utf-8-sig'), "is_listesi.csv", "text/csv")
 
 with sekme_sozlugu["👤 Profil Ayarları"]:
-    st.subheader("👤 Şifre Değiştir")
+    st.subheader("👤 Şifre Güncelle")
     e_p = st.text_input("Eski Şifre", type="password"); n_p = st.text_input("Yeni Şifre", type="password")
-    if st.button("💾 Şifreyi Güncelle"):
+    if st.button("💾 Şifreyi Değiştir"):
         idx = st.session_state.kullanicilar[st.session_state.kullanicilar['KULLANICI_ADI'] == st.session_state.aktif_kullanici].index[0]
         if str(st.session_state.kullanicilar.at[idx, 'SIFRE']) == e_p:
-            st.session_state.kullanicilar.at[idx, 'SIFRE'] = n_p; tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar"); st.success("Şifre güncellendi!"); st.rerun()
+            st.session_state.kullanicilar.at[idx, 'SIFRE'] = n_p; tablo_kaydet(st.session_state.kullanicilar, "Kullanıcılar"); st.success("Değiştirildi!"); st.rerun()
 
 if "👥 Kullanıcı Yönetimi" in sekme_sozlugu:
     with sekme_sozlugu["👥 Kullanıcı Yönetimi"]:
         ed_u = st.data_editor(st.session_state.kullanicilar, num_rows="dynamic", use_container_width=True, column_config={"SIFRE": None})
         if st.button("💾 Kullanıcıları Kaydet"):
-            ed_u['SIFRE'] = ed_u['SIFRE'].fillna("1234").replace("", "1234"); tablo_kaydet(ed_u, "Kullanıcılar"); st.success("Kullanıcılar kaydedildi!"); st.rerun()
+            ed_u['SIFRE'] = ed_u['SIFRE'].fillna("1234").replace("", "1234"); tablo_kaydet(ed_u, "Kullanıcılar"); st.success("Kaydedildi!"); st.rerun()
